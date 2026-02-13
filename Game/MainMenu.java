@@ -1,6 +1,8 @@
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 
 public class MainMenu extends JPanel {
     public MainMenu(Font titleFont, Font menuFont) {
@@ -32,6 +34,39 @@ public class MainMenu extends JPanel {
             buttonBox.add(btn);
         }
 
+        // ==========================================
+        // [จุดที่เพิ่มใหม่]: ระบบเริ่มเกมแบบ Fade Out (จอมืดลง)
+        // ==========================================
+        buttons[0].addActionListener(e -> {
+            // สร้าง Timer เพื่อค่อยๆ เพิ่มความมืด (ทำซ้ำทุก 20 มิลลิวินาที)
+            Timer fadeOutTimer = new Timer(20, new ActionListener() {
+                float alpha = 0.0f; // 0.0 คือใสสนิท, 1.0 คือมืดสนิท
+
+                @Override
+                public void actionPerformed(ActionEvent e2) {
+                    alpha += 0.02f; // ค่อยๆ เพิ่มความมืดทีละนิด (ปรับตัวเลขนี้เพื่อความเร็ว)
+                    
+                    if (alpha >= 1.0f) { // เมื่อมืดสนิทแล้ว (alpha ถึง 1.0)
+                        alpha = 1.0f;
+                        ((Timer)e2.getSource()).stop(); // หยุดการทำงานของ Timer
+                        
+                        // 1. เปลี่ยนหน้าไปยังหน้าเล่นเกม (PLAY)
+                        Main.cardLayout.show(Main.mainContainer, "PLAY");
+                        
+                        // 2. เรียกใช้เอฟเฟกต์ Fade In เพื่อให้หน้าใหม่ค่อยๆ สว่างขึ้น
+                        fadeIn();
+                    }
+                    
+                    // ส่งค่าความมืดไปที่ตัวแปรใน Main เพื่อวาดม่านสีดำทับหน้าจอ
+                    Main.overlayColor = Color.BLACK;
+                    Main.brightnessAlpha = alpha;
+                    Main.repaintBrightness(); // สั่งให้หน้าจอวาดใหม่
+                }
+            });
+            fadeOutTimer.start(); // เริ่มทำงานเอฟเฟกต์มืดลง
+        });
+
+        // ปุ่มอื่นๆ ทำงานตามปกติ
         buttons[2].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING"));
         buttons[3].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "CREDIT"));
         buttons[4].addActionListener(e -> showCustomExitDialog());
@@ -40,7 +75,31 @@ public class MainMenu extends JPanel {
         add(menuButtonPanel, BorderLayout.CENTER);
     }
 
+    // ==========================================
+    // [ฟังก์ชันเพิ่มเติม]: ทำให้หน้าจอค่อยๆ สว่างคืนมา (Fade In)
+    // ==========================================
+    private void fadeIn() {
+        Timer fadeInTimer = new Timer(20, new ActionListener() {
+            float alpha = 1.0f; // เริ่มที่มืดสนิท
+
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                alpha -= 0.02f; // ค่อยๆ ลดความมืดลง
+                
+                if (alpha <= 0.0f) { // เมื่อสว่างสนิท
+                    alpha = 0.0f;
+                    ((Timer)e.getSource()).stop();
+                }
+                
+                Main.brightnessAlpha = alpha;
+                Main.repaintBrightness();
+            }
+        });
+        fadeInTimer.start();
+    }
+
     private void showCustomExitDialog() {
+        // ... (โค้ด Dialog เดิมของคุณ) ...
         JDialog exitDialog = new JDialog(Main.mainFrame, "ยืนยัน", true);
         exitDialog.setUndecorated(true);
         
@@ -49,14 +108,13 @@ public class MainMenu extends JPanel {
         panel.setBorder(BorderFactory.createLineBorder(new Color(255, 105, 180), 3));
 
         JLabel label = new JLabel("คุณต้องการออกจากเกมใช่ไหม?", SwingConstants.CENTER);
-        label.setFont(new Font("Tahoma", Font.BOLD, 18)); // กำหนด Font เพื่อให้แสดงไทยได้
+        label.setFont(new Font("Tahoma", Font.BOLD, 18));
         label.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
         panel.add(label, BorderLayout.NORTH);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 15));
         btnPanel.setOpaque(false);
 
-        // สร้างปุ่ม ใช่/ไม่ และกำหนด Font ป้องกันบั๊กสี่เหลี่ยม
         JButton yes = new JButton("ใช่");
         JButton no = new JButton("ไม่");
         
@@ -64,7 +122,6 @@ public class MainMenu extends JPanel {
         yes.setFont(thaiFont);
         no.setFont(thaiFont);
         
-        // ตกแต่งปุ่มให้ดูมีมิติเหมือนหน้าเมนู
         yes.setPreferredSize(new Dimension(80, 35));
         no.setPreferredSize(new Dimension(80, 35));
         yes.setBackground(Color.WHITE);

@@ -29,6 +29,7 @@ public class Main {
         mainContainer.add(new MainMenu(titleFont, menuFont), "MENU");
         mainContainer.add(new SettingPage(subTitleFont, menuFont), "SETTING");
         mainContainer.add(new CreditPage(subTitleFont, menuFont), "CREDIT");
+        mainContainer.add(new PlayPage(subTitleFont), "PLAY");
 
         mainFrame.add(mainContainer);
         mainFrame.setVisible(true);
