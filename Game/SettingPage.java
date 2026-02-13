@@ -5,23 +5,37 @@ import java.awt.*;
 public class SettingPage extends JPanel {
     public SettingPage(Font tFont, Font bFont) {
         setLayout(new BorderLayout());
-        setBackground(new Color(230, 230, 250));
+        setBackground(new Color(230, 230, 250)); // สีพื้นหลังม่วงอ่อน
         setBorder(new EmptyBorder(30, 30, 30, 30));
 
+        // --- หัวข้อหน้าจอ ---
         JLabel label = new JLabel("ตั้งค่าระบบ");
         label.setFont(tFont);
         add(label, BorderLayout.NORTH);
 
+        // --- ส่วนเนื้อหา (Sliders / Combos) ---
         JPanel content = new JPanel(new GridBagLayout());
         content.setOpaque(false);
         setupSettingLogic(content);
         add(content, BorderLayout.CENTER);
 
+        // --- [จุดที่แก้]: ปุ่มย้อนกลับแบบใหม่ให้เหมือนในรูป ---
         JButton backBtn = new JButton("ย้อนกลับ");
-        backBtn.setFont(bFont);
-        backBtn.setPreferredSize(new Dimension(150, 45));
+        backBtn.setFont(new Font("Tahoma", Font.BOLD, 22)); // ปรับฟอนต์ให้ใหญ่และชัด
+        backBtn.setPreferredSize(new Dimension(200, 60));   // ขนาดปุ่มใหญ่ขึ้น
+        backBtn.setBackground(Color.WHITE);
+        backBtn.setFocusable(false);
+        
+        // เพิ่มเส้นขอบ (Border) ให้เหมือนในภาพ image_b184fd.png
+        backBtn.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(180, 200, 220), 1),
+            BorderFactory.createEmptyBorder(5, 15, 5, 15)
+        ));
+
+        // สั่งให้กดแล้วกลับหน้าเมนู
         backBtn.addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "MENU"));
         
+        // จัดวางปุ่มไว้ซ้ายล่าง
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.LEFT));
         bottom.setOpaque(false);
         bottom.add(backBtn);
@@ -48,6 +62,7 @@ public class SettingPage extends JPanel {
         brightSlider.addChangeListener(e -> {
             int val = brightSlider.getValue();
             pLabel.setText((val / 2) + "%");
+            // เปลี่ยนสีม่าน (Black/White) ตามค่า Slider
             if (val < 100) { Main.overlayColor = Color.BLACK; Main.brightnessAlpha = (100 - val) / 125.0f; }
             else { Main.overlayColor = Color.WHITE; Main.brightnessAlpha = (val - 100) / 250.0f; }
             Main.repaintBrightness();

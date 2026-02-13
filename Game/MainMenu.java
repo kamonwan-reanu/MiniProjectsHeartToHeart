@@ -43,18 +43,33 @@ public class MainMenu extends JPanel {
     private void showCustomExitDialog() {
         JDialog exitDialog = new JDialog(Main.mainFrame, "ยืนยัน", true);
         exitDialog.setUndecorated(true);
+        
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBackground(new Color(255, 240, 245));
         panel.setBorder(BorderFactory.createLineBorder(new Color(255, 105, 180), 3));
 
         JLabel label = new JLabel("คุณต้องการออกจากเกมใช่ไหม?", SwingConstants.CENTER);
-        label.setFont(new Font("Tahoma", Font.BOLD, 18));
+        label.setFont(new Font("Tahoma", Font.BOLD, 18)); // กำหนด Font เพื่อให้แสดงไทยได้
         label.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
         panel.add(label, BorderLayout.NORTH);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 15));
         btnPanel.setOpaque(false);
-        JButton yes = new JButton("ใช่"); JButton no = new JButton("ไม่");
+
+        // สร้างปุ่ม ใช่/ไม่ และกำหนด Font ป้องกันบั๊กสี่เหลี่ยม
+        JButton yes = new JButton("ใช่");
+        JButton no = new JButton("ไม่");
+        
+        Font thaiFont = new Font("Tahoma", Font.BOLD, 16);
+        yes.setFont(thaiFont);
+        no.setFont(thaiFont);
+        
+        // ตกแต่งปุ่มให้ดูมีมิติเหมือนหน้าเมนู
+        yes.setPreferredSize(new Dimension(80, 35));
+        no.setPreferredSize(new Dimension(80, 35));
+        yes.setBackground(Color.WHITE);
+        no.setBackground(Color.WHITE);
+
         yes.addActionListener(e -> System.exit(0));
         no.addActionListener(e -> exitDialog.dispose());
         
