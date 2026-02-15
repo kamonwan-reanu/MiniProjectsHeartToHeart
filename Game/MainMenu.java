@@ -38,34 +38,39 @@ public class MainMenu extends JPanel {
         // [จุดที่เพิ่มใหม่]: ระบบเริ่มเกมแบบ Fade Out (จอมืดลง)
         // ==========================================
         buttons[0].addActionListener(e -> {
-            // สร้าง Timer เพื่อค่อยๆ เพิ่มความมืด (ทำซ้ำทุก 20 มิลลิวินาที)
+            // --- [เพิ่มบรรทัดนี้]: ปิดปุ่มทันทีเพื่อป้องกันการกดซ้ำ ---
+            buttons[0].setEnabled(false); 
+            
+            // สร้าง Timer เพื่อค่อยๆ เพิ่มความมืด
             Timer fadeOutTimer = new Timer(20, new ActionListener() {
-                float alpha = 0.0f; // 0.0 คือใสสนิท, 1.0 คือมืดสนิท
+                float alpha = 0.0f;
 
                 @Override
                 public void actionPerformed(ActionEvent e2) {
-                    alpha += 0.02f; // ค่อยๆ เพิ่มความมืดทีละนิด (ปรับตัวเลขนี้เพื่อความเร็ว)
+                    alpha += 0.02f; 
                     
-                    if (alpha >= 1.0f) { // เมื่อมืดสนิทแล้ว (alpha ถึง 1.0)
+                    if (alpha >= 1.0f) {
                         alpha = 1.0f;
-                        ((Timer)e2.getSource()).stop(); // หยุดการทำงานของ Timer
+                        ((Timer)e2.getSource()).stop();
                         
-                        // 1. เปลี่ยนหน้าไปยังหน้าเล่นเกม (PLAY)
+                        // เปลี่ยนหน้าไปยังหน้าเล่นเกม
                         Main.cardLayout.show(Main.mainContainer, "PLAY");
                         
-                        // 2. เรียกใช้เอฟเฟกต์ Fade In เพื่อให้หน้าใหม่ค่อยๆ สว่างขึ้น
+                        // เรียกใช้เอฟเฟกต์ Fade In ให้หน้าใหม่สว่างขึ้น
                         fadeIn();
+                        
+                        // --- [เพิ่มบรรทัดนี้]: เปิดปุ่มกลับมาเผื่อกรณีผู้เล่นกลับมาหน้าเมนูอีกครั้ง ---
+                        buttons[0].setEnabled(true); 
                     }
                     
-                    // ส่งค่าความมืดไปที่ตัวแปรใน Main เพื่อวาดม่านสีดำทับหน้าจอ
                     Main.overlayColor = Color.BLACK;
                     Main.brightnessAlpha = alpha;
-                    Main.repaintBrightness(); // สั่งให้หน้าจอวาดใหม่
+                    Main.repaintBrightness();
                 }
             });
-            fadeOutTimer.start(); // เริ่มทำงานเอฟเฟกต์มืดลง
+            fadeOutTimer.start();
         });
-
+        
         // ปุ่มอื่นๆ ทำงานตามปกติ
         buttons[2].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING"));
         buttons[3].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "CREDIT"));
