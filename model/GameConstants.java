@@ -6,10 +6,16 @@ public class GameConstants {
     public static final int SCREEN_HEIGHT = 1080;
     public static final int TYPEWRITER_SPEED = 50; 
 
-    // ✅ ต้องเป็น public เพื่อให้ไฟล์อื่นดึงไปใช้ได้
+    // ✅ Path สำหรับรูปภาพ (ของเดิมที่หนูมี)
     public static final String CHAR_PATH = "model/img_character/"; 
     public static final String SCENE_PATH = "model/img_scene/";
 
+    // ✅ เพิ่ม Path สำหรับเสียง (Sound)
+    // อวี่เชินแนะนำให้เก็บไว้ในโฟลเดอร์ model/sounds/ นะคะ
+    // ใน GameConstants.java
+    public static final String SOUND_PATH = "model/sound_effect/"; // ✅ ต้องชื่อนี้ตาม Explorer ของหนู
+
+    // ✅ ตัวอย่างการประกาศตัวแปรดึงไฟล์ (Optional: เผื่อหนูอยากเรียกใช้ตรงๆ)
     public static final String CHAR_AHRI = CHAR_PATH + "ahri.jpg"; 
     public static final String BG_SCHOOL = SCENE_PATH + "scene1.jpg"; 
 

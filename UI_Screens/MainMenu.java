@@ -5,18 +5,21 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.*;
 import core.Main; 
+import model.GameConstants; 
 
 public class MainMenu extends JPanel {
-    // ประกาศตัวแปรไว้ด้านบนเพื่อให้อ้างอิงได้ในทุกเมธอด
     private JLabel gameName;
     private JPanel buttonBox;
     private JButton[] buttons;
+
+    // ✅ ตัดบรรทัด SoundManager soundManager = new SoundManager(); ออก 
+    // เพื่อไปใช้ Main.soundManager แทน (ป้องกันโปรแกรมค้าง)
+    private Timer bgmLoopTimer;
 
     public MainMenu(Font titleFont, Font menuFont) {
         setLayout(new BorderLayout());
         setBackground(new Color(255, 230, 240));
 
-        // ✅ 1. รักษาระบบเดิม: สร้าง Component
         gameName = new JLabel("HeartToHeart", SwingConstants.CENTER);
         gameName.setForeground(new Color(255, 105, 180));
         add(gameName, BorderLayout.NORTH);
@@ -40,8 +43,9 @@ public class MainMenu extends JPanel {
             buttonBox.add(btn);
         }
 
-        // ✅ 2. รักษาระบบเดิม: Action Listeners (Fade Out และปุ่มอื่นๆ)
+        // --- Action Listeners ---
         buttons[0].addActionListener(e -> {
+            stopMenuMusic(); // หยุดเพลงเมื่อเริ่มเกม
             buttons[0].setEnabled(false); 
             Timer fadeOutTimer = new Timer(20, new ActionListener() {
                 float alpha = 0.0f;
@@ -61,6 +65,7 @@ public class MainMenu extends JPanel {
             fadeOutTimer.start();
         });
 
+        // ✅ ปุ่มตั้งค่า
         buttons[2].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING")); 
         buttons[3].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "CREDIT"));
         buttons[4].addActionListener(e -> showCustomExitDialog());
@@ -68,63 +73,49 @@ public class MainMenu extends JPanel {
         menuButtonPanel.add(buttonBox);
         add(menuButtonPanel, BorderLayout.CENTER);
 
-        // ✅ 3. ระบบใหม่: บังคับให้หน้าจอ "คำนวณความพอดี" ทุกครั้งที่มีการเปลี่ยนขนาด
         this.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
                 applyResponsiveLayout();
             }
         });
+
+        // ✅ เริ่มระบบเพลงเมนู
+        startMenuMusic();
     }
 
-    // ✅ ฟังก์ชันใหม่สำหรับคำนวณความพอดี (โดยไม่ไปยุ่งกับ Logic ปุ่ม)
-        private void applyResponsiveLayout() {
+    private void startMenuMusic() {
+        String bgmPath = GameConstants.SOUND_PATH + "music_mainmenu.wav"; 
+        // ✅ เรียกแค่นี้พอครับ SoundManager จะจัดการวนลูปให้เองถาวร
+        Main.soundManager.playBGM(bgmPath); 
+    }
+
+    public void stopMenuMusic() {
+        if (bgmLoopTimer != null) bgmLoopTimer.stop();
+        Main.soundManager.stopBGM(); 
+    }
+
+    private void applyResponsiveLayout() {
         int w = getWidth();
         int h = getHeight();
         if (w <= 0 || h <= 0) return;
 
-        // ✅ 1. ปรับระยะห่างขอบจอให้มากขึ้น (ปุ่มจะได้ดูเล็กลง)
         setBorder(new EmptyBorder(h / 10, w / 5, h / 10, w / 5)); 
-
-        // ✅ 2. ปรับขนาดชื่อเกมให้เล็กลงอีกนิด
-        float titleSize = Math.min(w * 0.08f, 65f); // ลดจาก 0.10 และ 75f
+        float titleSize = Math.min(w * 0.08f, 65f);
         gameName.setFont(new Font("Tahoma", Font.BOLD, (int)titleSize));
 
-        // ✅ 3. ล็อคความกว้างปุ่มไม่ให้เกิน 400px (เพื่อให้ดูพอดีสายตา)
-        int btnW = Math.min((int)(w * 0.45), 400); // กว้างแค่ 45% ของจอ และไม่เกิน 400px
+        int btnW = Math.min((int)(w * 0.45), 400);
         int btnH = Math.max((int)(h * 0.07), 45); 
-        
-        // ✅ 4. ปรับฟอนต์ปุ่มให้เล็กลงนิดนึงแต่อ่านง่าย
         float fontSize = Math.min(w * 0.035f, 20f); 
 
         for (JButton btn : buttons) {
             btn.setPreferredSize(new Dimension(btnW, btnH));
             btn.setFont(new Font("Tahoma", Font.BOLD, (int)fontSize));
         }
-
         revalidate();
         repaint();
     }
 
-    // ✅ รักษาระบบเดิม: ฟังก์ชัน fadeIn
-    public void fadeIn() {
-        Timer fadeInTimer = new Timer(20, new ActionListener() {
-            float alpha = 1.0f; 
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                alpha -= 0.02f; 
-                if (alpha <= 0.0f) {
-                    alpha = 0.0f;
-                    ((Timer)e.getSource()).stop();
-                }
-                Main.brightnessAlpha = alpha;
-                Main.repaintBrightness();
-            }
-        });
-        fadeInTimer.start();
-    }
-
-    // ✅ รักษาระบบเดิม: Dialog ยืนยันการออก
     private void showCustomExitDialog() {
         JDialog exitDialog = new JDialog(Main.mainFrame, "ยืนยัน", true);
         exitDialog.setUndecorated(true);

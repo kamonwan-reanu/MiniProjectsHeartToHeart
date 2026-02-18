@@ -6,6 +6,7 @@ import java.awt.event.*;
 import UI_Components.DialogueBox; 
 import UI_Components.CharacterSprite; 
 import model.GameConstants; 
+import model.SoundManager; 
 
 public class PlaySceneMain extends JPanel {
     private Object[][] currentSceneData; 
@@ -22,6 +23,9 @@ public class PlaySceneMain extends JPanel {
     private CharacterSprite characterLayer; 
     private DialogueBox dialogueBox;     
     private Timer typeTimer;             
+    
+    // ✅ จุดที่ 1: ตรวจสอบว่า SoundManager ในโฟลเดอร์ model ไม่มี Error นะคะ
+    private SoundManager soundManager = new SoundManager();
 
     public PlaySceneMain(Object[][] sceneData, String charPath, String sceneName) {
         this.currentSceneData = sceneData; 
@@ -50,7 +54,6 @@ public class PlaySceneMain extends JPanel {
             }
         });
 
-        // ✅ ตัวรับคลิกหลัก ย้ายไปจัดการใน DialogueBox ที่กางเต็มจอแล้ว
         dialogueBox.setOnNextRequested(this::handleInteraction);
 
         if (currentSceneData != null && currentSceneData.length > 0) {
@@ -59,9 +62,8 @@ public class PlaySceneMain extends JPanel {
     }
 
     public void loadNewScene(Object[][] nextSceneData, String newSceneName) {
-        if (nextSceneData == null || nextSceneData.length == 0) {
-            return;
-        }
+        if (nextSceneData == null || nextSceneData.length == 0) return;
+        
         this.currentSceneData = nextSceneData;
         this.sceneName = newSceneName; 
         this.storyIndex = 0;
@@ -90,7 +92,6 @@ public class PlaySceneMain extends JPanel {
         characterLayer = new CharacterSprite(currentChar); 
         dialogueBox = new DialogueBox(); 
 
-        // ✅ ลำดับชั้น (Z-Order): ตัวรับคลิก (DialogueBox) ต้องอยู่หน้าสุด (Index 0)
         add(dialogueBox);     
         add(characterLayer);  
         add(bgLayer);         
@@ -101,20 +102,14 @@ public class PlaySceneMain extends JPanel {
         int h = getHeight();
         if (w <= 0 || h <= 0) return;
 
-        // พื้นหลังและตัวละครขยายเต็ม Panel
         bgLayer.setBounds(0, 0, w, h);
         characterLayer.setBounds(0, 0, w, h);
-
-        // ✅ หัวใจสำคัญ: กาง DialogueBox ให้เต็มหน้าจอเพื่อดักจับ Mouse Event ทุกจุด
         dialogueBox.setBounds(0, 0, w, h); 
 
-        // คำนวณขนาดกล่องคำพูด (ที่อยู่ข้างใน DialogueBox อีกที)
         int groupW = (int)(w * 0.85); 
         int groupH = (int)(h * 0.25); 
         
-        // ส่งค่า h เพื่อให้ DialogueBox ไปวางกล่องไว้ข้างล่างสุดของจอ
         dialogueBox.updateLayout(groupW, groupH, h); 
-        
         revalidate();
         repaint();
     }
@@ -142,6 +137,7 @@ public class PlaySceneMain extends JPanel {
         } else if (sceneName.equals("SCENE_3")) {
             loadNewScene(model.StoryData.SCENE_4, "SCENE_4");
         }
+        
     }
 
     private void updateScene(Object[] lineData) {
@@ -150,6 +146,7 @@ public class PlaySceneMain extends JPanel {
         currentSpeaker = (String) lineData[0]; 
         fullText = (String) lineData[1];
 
+        // 1. อัปเดตตัวละคร
         if (lineData.length >= 3) {
             String fileName = (String) lineData[2];
             if (fileName != null && !fileName.isEmpty()) {
@@ -158,6 +155,7 @@ public class PlaySceneMain extends JPanel {
             }
         }
 
+        // 2. อัปเดตพื้นหลัง
         if (lineData.length >= 4) {
             String fileName = (String) lineData[3];
             if (fileName != null && !fileName.isEmpty() && !fileName.equals("none")) {
@@ -165,6 +163,22 @@ public class PlaySceneMain extends JPanel {
                 bgLayer.repaint(); 
             }
         }
+
+        // ✅ จุดที่ 2: ระบบเสียง (แก้ SOUND_PATH ให้เรียกจาก GameConstants ให้ถูกต้อง)
+        if (lineData.length >= 5) {
+            String soundName = (String) lineData[4];
+            if (soundName != null && !soundName.isEmpty() && !soundName.equals("none")) {
+                // ตรวจสอบว่า GameConstants มี SOUND_PATH หรือยัง
+                String fullPath = GameConstants.SOUND_PATH + soundName + ".wav";
+                
+                if (soundName.startsWith("BGM")) {
+                    soundManager.playBGM(fullPath);
+                } else {
+                    soundManager.playSE(fullPath);
+                }
+            }
+        }
+
         startTypewriter();
     }
 
