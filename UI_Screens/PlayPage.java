@@ -1,3 +1,5 @@
+package UI_Screens;
+
 import javax.swing.*;
 import javax.swing.text.*;
 import java.awt.*;
@@ -5,6 +7,9 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+
+import core.Main; 
+import model.StoryData;
 
 public class PlayPage extends JPanel {
     private int storyIndex = 0;
@@ -17,7 +22,6 @@ public class PlayPage extends JPanel {
     private Timer fadeTimer;
 
     public PlayPage(Font tFont) {
-        // ใช้ GridBagLayout เพื่อดึงทุกอย่างมากองไว้กึ่งกลางจอ
         setLayout(new GridBagLayout());
         setBackground(Color.BLACK);
 
@@ -36,48 +40,54 @@ public class PlayPage extends JPanel {
         textPane.setFocusable(false);
         textPane.setOpaque(false);
         textPane.setForeground(Color.WHITE);
-        textPane.setHighlighter(null); // ปิดการคลุมดำเพื่อให้เมาส์ไม่โดนดัก
-
-        // จัดข้อความภายในให้กึ่งกลาง (Center Alignment)
-        centerText();
-        
-        // --- [แก้จุดที่ 1: ทำให้ข้อความรับการคลิกเหมือนพื้นหลัง] ---
-        textPane.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                handlePageClick(); // คลิกที่ตัวหนังสือก็ทำงาน
-            }
-        });
-
-        add(textPane);
-
-        // --- [แก้จุดที่ 2: ทำให้พื้นหลังจอดำรับการคลิกได้] ---
-        addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                handlePageClick(); // คลิกที่ช่องว่างก็ทำงาน
-            }
-        });
+        textPane.setHighlighter(null); 
 
         this.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentShown(ComponentEvent e) {
+                resetAndStart(); 
+            }
             @Override
             public void componentResized(ComponentEvent e) {
                 updateTextLayout();
             }
         });
 
-        if (StoryData.SCENE_1.length > 0) {
-            startTypewriter(StoryData.SCENE_1[storyIndex]);
+        centerText();
+        
+        MouseAdapter clickAdapter = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                handlePageClick(); 
+            }
+        };
+        textPane.addMouseListener(clickAdapter);
+        addMouseListener(clickAdapter);
+
+        add(textPane);
+    }
+
+    private void resetAndStart() {
+        storyIndex = 0;
+        textAlpha = 1.0f;
+        
+        // แก้ไขการเข้าถึงตัวแปรใน Main (ใช้ชื่อคลาส Main ให้ถูกต้อง)
+        Main.brightnessAlpha = 0.0f; 
+        Main.repaintBrightness();
+        
+        // ✅ เปลี่ยนวิธีดึงข้อมูล: ดึงเฉพาะข้อความจาก Object[][] (index 1)
+        if (StoryData.SCENE_1 != null && StoryData.SCENE_1.length > 0) {
+            String initialText = (String) StoryData.SCENE_1[storyIndex][1]; 
+            startTypewriter(initialText);
         }
     }
 
-    // ฟังก์ชันจัดการการคลิก (รวมศูนย์ไว้ที่เดียว)
     private void handlePageClick() {
         if (typeTimer != null && typeTimer.isRunning()) {
             typeTimer.stop();
             textPane.setText(fullText); 
             charIndex = fullText.length();
-            centerText(); // จัดกึ่งกลางหลังพิมพ์เสร็จทันที
+            centerText(); 
         } 
         else if (fadeTimer == null || !fadeTimer.isRunning()) {
             startFadeOutNext();
@@ -96,11 +106,8 @@ public class PlayPage extends JPanel {
         int h = getHeight();
         if (w <= 0 || h <= 0) return;
 
-        // ฟอนต์ Responsive ตามความสูงจอ
         int fontSize = Math.max(22, h / 28); 
         textPane.setFont(new Font("Tahoma", Font.PLAIN, fontSize));
-        
-        // ล็อคขนาดพื้นที่เพื่อความนิ่ง
         textPane.setPreferredSize(new Dimension((int)(w * 0.8), h / 2));
         
         revalidate();
@@ -119,7 +126,7 @@ public class PlayPage extends JPanel {
             if (charIndex < fullText.length()) {
                 charIndex++;
                 textPane.setText(fullText.substring(0, charIndex)); 
-                centerText(); // บังคับกึ่งกลางทุกตัวอักษรที่พิมพ์
+                centerText(); 
             } else {
                 typeTimer.stop();
             }
@@ -144,11 +151,16 @@ public class PlayPage extends JPanel {
     }
 
     private void goToNextSentence() {
-        if (storyIndex < StoryData.SCENE_1.length) {
-            startTypewriter(StoryData.SCENE_1[storyIndex]);
+        // ✅ ตรวจสอบข้อมูลก่อนดึงมาแสดงผล
+        if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
+            String nextText = (String) StoryData.SCENE_1[storyIndex][1];
+            startTypewriter(nextText);
         } else {
             textPane.setText(""); 
-            Main.cardLayout.show(Main.mainContainer, "GAME_PLAY"); 
+            // ✅ เปลี่ยนหน้าไปยังฉากเล่นเกมหลัก
+            if (Main.cardLayout != null) {
+                Main.cardLayout.show(Main.mainContainer, "PLAY_SCENE"); 
+            }
         }
     }
 }

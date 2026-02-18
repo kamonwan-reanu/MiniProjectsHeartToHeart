@@ -1,101 +1,122 @@
+package UI_Screens;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.event.*;
+import core.Main; 
 
 public class MainMenu extends JPanel {
+    // ประกาศตัวแปรไว้ด้านบนเพื่อให้อ้างอิงได้ในทุกเมธอด
+    private JLabel gameName;
+    private JPanel buttonBox;
+    private JButton[] buttons;
+
     public MainMenu(Font titleFont, Font menuFont) {
         setLayout(new BorderLayout());
         setBackground(new Color(255, 230, 240));
-        setBorder(new EmptyBorder(50, 50, 50, 50));
 
-        JLabel gameName = new JLabel("HeartToHeart", SwingConstants.CENTER);
-        gameName.setFont(titleFont);
+        // ✅ 1. รักษาระบบเดิม: สร้าง Component
+        gameName = new JLabel("HeartToHeart", SwingConstants.CENTER);
         gameName.setForeground(new Color(255, 105, 180));
         add(gameName, BorderLayout.NORTH);
 
         JPanel menuButtonPanel = new JPanel(new GridBagLayout());
         menuButtonPanel.setOpaque(false);
-        JPanel buttonBox = new JPanel(new GridLayout(5, 1, 0, 15));
+        
+        buttonBox = new JPanel(new GridLayout(5, 1, 0, 15)); 
         buttonBox.setOpaque(false);
 
-        JButton[] buttons = {
+        buttons = new JButton[]{
             new JButton("เริ่มเกม"), new JButton("บันทึกเกม"), 
             new JButton("ตั้งค่า"), new JButton("เกี่ยวกับคนสร้าง"), 
             new JButton("ออกจากเกม")
         };
 
         for (JButton btn : buttons) {
-            btn.setFont(menuFont);
-            btn.setPreferredSize(new Dimension(350, 60));
             btn.setBackground(Color.WHITE);
             btn.setFocusable(false);
+            btn.setBorder(BorderFactory.createLineBorder(new Color(255, 182, 193), 2));
             buttonBox.add(btn);
         }
 
-        // ==========================================
-        // [จุดที่เพิ่มใหม่]: ระบบเริ่มเกมแบบ Fade Out (จอมืดลง)
-        // ==========================================
+        // ✅ 2. รักษาระบบเดิม: Action Listeners (Fade Out และปุ่มอื่นๆ)
         buttons[0].addActionListener(e -> {
-            // --- [เพิ่มบรรทัดนี้]: ปิดปุ่มทันทีเพื่อป้องกันการกดซ้ำ ---
             buttons[0].setEnabled(false); 
-            
-            // สร้าง Timer เพื่อค่อยๆ เพิ่มความมืด
             Timer fadeOutTimer = new Timer(20, new ActionListener() {
                 float alpha = 0.0f;
-
                 @Override
                 public void actionPerformed(ActionEvent e2) {
-                    alpha += 0.02f; 
-                    
+                    alpha += 0.05f;
                     if (alpha >= 1.0f) {
                         alpha = 1.0f;
                         ((Timer)e2.getSource()).stop();
-                        
-                        // เปลี่ยนหน้าไปยังหน้าเล่นเกม
-                        Main.cardLayout.show(Main.mainContainer, "PLAY");
-                        
-                        // เรียกใช้เอฟเฟกต์ Fade In ให้หน้าใหม่สว่างขึ้น
-                        fadeIn();
-                        
-                        // --- [เพิ่มบรรทัดนี้]: เปิดปุ่มกลับมาเผื่อกรณีผู้เล่นกลับมาหน้าเมนูอีกครั้ง ---
+                        Main.cardLayout.show(Main.mainContainer, "PLAY"); 
                         buttons[0].setEnabled(true); 
                     }
-                    
-                    Main.overlayColor = Color.BLACK;
                     Main.brightnessAlpha = alpha;
                     Main.repaintBrightness();
                 }
             });
             fadeOutTimer.start();
         });
-        
-        // ปุ่มอื่นๆ ทำงานตามปกติ
-        buttons[2].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING"));
+
+        buttons[2].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING")); 
         buttons[3].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "CREDIT"));
         buttons[4].addActionListener(e -> showCustomExitDialog());
 
         menuButtonPanel.add(buttonBox);
         add(menuButtonPanel, BorderLayout.CENTER);
+
+        // ✅ 3. ระบบใหม่: บังคับให้หน้าจอ "คำนวณความพอดี" ทุกครั้งที่มีการเปลี่ยนขนาด
+        this.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                applyResponsiveLayout();
+            }
+        });
     }
 
-    // ==========================================
-    // [ฟังก์ชันเพิ่มเติม]: ทำให้หน้าจอค่อยๆ สว่างคืนมา (Fade In)
-    // ==========================================
-    private void fadeIn() {
-        Timer fadeInTimer = new Timer(20, new ActionListener() {
-            float alpha = 1.0f; // เริ่มที่มืดสนิท
+    // ✅ ฟังก์ชันใหม่สำหรับคำนวณความพอดี (โดยไม่ไปยุ่งกับ Logic ปุ่ม)
+        private void applyResponsiveLayout() {
+        int w = getWidth();
+        int h = getHeight();
+        if (w <= 0 || h <= 0) return;
 
+        // ✅ 1. ปรับระยะห่างขอบจอให้มากขึ้น (ปุ่มจะได้ดูเล็กลง)
+        setBorder(new EmptyBorder(h / 10, w / 5, h / 10, w / 5)); 
+
+        // ✅ 2. ปรับขนาดชื่อเกมให้เล็กลงอีกนิด
+        float titleSize = Math.min(w * 0.08f, 65f); // ลดจาก 0.10 และ 75f
+        gameName.setFont(new Font("Tahoma", Font.BOLD, (int)titleSize));
+
+        // ✅ 3. ล็อคความกว้างปุ่มไม่ให้เกิน 400px (เพื่อให้ดูพอดีสายตา)
+        int btnW = Math.min((int)(w * 0.45), 400); // กว้างแค่ 45% ของจอ และไม่เกิน 400px
+        int btnH = Math.max((int)(h * 0.07), 45); 
+        
+        // ✅ 4. ปรับฟอนต์ปุ่มให้เล็กลงนิดนึงแต่อ่านง่าย
+        float fontSize = Math.min(w * 0.035f, 20f); 
+
+        for (JButton btn : buttons) {
+            btn.setPreferredSize(new Dimension(btnW, btnH));
+            btn.setFont(new Font("Tahoma", Font.BOLD, (int)fontSize));
+        }
+
+        revalidate();
+        repaint();
+    }
+
+    // ✅ รักษาระบบเดิม: ฟังก์ชัน fadeIn
+    public void fadeIn() {
+        Timer fadeInTimer = new Timer(20, new ActionListener() {
+            float alpha = 1.0f; 
             @Override
             public void actionPerformed(ActionEvent e) {
-                alpha -= 0.02f; // ค่อยๆ ลดความมืดลง
-                
-                if (alpha <= 0.0f) { // เมื่อสว่างสนิท
+                alpha -= 0.02f; 
+                if (alpha <= 0.0f) {
                     alpha = 0.0f;
                     ((Timer)e.getSource()).stop();
                 }
-                
                 Main.brightnessAlpha = alpha;
                 Main.repaintBrightness();
             }
@@ -103,8 +124,8 @@ public class MainMenu extends JPanel {
         fadeInTimer.start();
     }
 
+    // ✅ รักษาระบบเดิม: Dialog ยืนยันการออก
     private void showCustomExitDialog() {
-        // ... (โค้ด Dialog เดิมของคุณ) ...
         JDialog exitDialog = new JDialog(Main.mainFrame, "ยืนยัน", true);
         exitDialog.setUndecorated(true);
         
@@ -113,7 +134,7 @@ public class MainMenu extends JPanel {
         panel.setBorder(BorderFactory.createLineBorder(new Color(255, 105, 180), 3));
 
         JLabel label = new JLabel("คุณต้องการออกจากเกมใช่ไหม?", SwingConstants.CENTER);
-        label.setFont(new Font("Tahoma", Font.BOLD, 18));
+        label.setFont(new Font("Tahoma", Font.BOLD, 16));
         label.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
         panel.add(label, BorderLayout.NORTH);
 
@@ -123,7 +144,7 @@ public class MainMenu extends JPanel {
         JButton yes = new JButton("ใช่");
         JButton no = new JButton("ไม่");
         
-        Font thaiFont = new Font("Tahoma", Font.BOLD, 16);
+        Font thaiFont = new Font("Tahoma", Font.BOLD, 14);
         yes.setFont(thaiFont);
         no.setFont(thaiFont);
         
