@@ -1,6 +1,7 @@
 package core; 
 
 import javax.swing.*;
+
 import java.awt.*;
 import UI_Screens.*; 
 import model.StoryData;    
@@ -20,21 +21,18 @@ public class Main {
             mainFrame = new JFrame("HeartToHeart");
             mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             
-            // ✅ 1. ยอมให้ขยายจอใหญ่ได้ (Resizable = true)
+            // ✅ ยอมให้ขยายจอได้
             mainFrame.setResizable(true); 
 
-            // ✅ 2. ตั้งขนาด "พื้นที่เล่นเกม" ที่ต้องการคือ 1920x1080
+            // ✅ ตั้งขนาดพื้นที่เล่นเกม (ปรับเป็น 1280x720 หรือ 1920x1080 ตามที่ Ahri ต้องการ)
             mainContainer.setPreferredSize(new Dimension(1920, 1080)); 
             
             setupScreens();
             mainFrame.add(mainContainer);
 
-            // ✅ 3. สั่ง pack() เพื่อคำนวณขนาด (800x600 + ขอบหน้าต่าง/แถบชื่อด้านบน)
             mainFrame.pack(); 
 
-            // ✅ 4. 🔥 จุดสำคัญที่สุด: ล็อคกำแพงขั้นต่ำทันทีหลัง pack
-            // เราใช้ค่าที่ pack ออกมา (ซึ่งคือขนาด 800x600 รวมขอบพอดี) 
-            // มาตั้งเป็น MinimumSize เพื่อไม่ให้มือผู้เล่นลากหดจอไปได้มากกว่านี้ค่ะ
+            // ✅ ล็อคขนาดขั้นต่ำไม่ให้หดจอเล็กเกินไป
             mainFrame.setMinimumSize(mainFrame.getSize()); 
 
             mainFrame.setLocationRelativeTo(null); 
@@ -48,16 +46,21 @@ public class Main {
         Font menuFont = new Font("Tahoma", Font.BOLD, 24);  
         Font subTitleFont = new Font("Tahoma", Font.BOLD, 40);
 
-        // โหลดหน้าจอตามปกติ
+        // 1. โหลดหน้าเมนูและหน้าอื่นๆ
         mainContainer.add(new MainMenu(titleFont, menuFont), "MENU");
         mainContainer.add(new SettingPage(subTitleFont, menuFont), "SETTING");
         mainContainer.add(new CreditPage(subTitleFont, menuFont), "CREDIT");
         mainContainer.add(new PlayPage(subTitleFont), "PLAY");
-        mainContainer.add(new PlaySceneMain(
-            StoryData.SCENE_1, 
-            GameConstants.BG_SCHOOL, 
-            GameConstants.CHAR_AHRI
-        ), "PLAY_SCENE");
+
+        // 2. ✅ เพิ่ม PLAY_SCENE เข้าไปใน CardLayout ให้ถูกต้อง
+        // เราส่ง StoryData.SCENE_1 เพื่อเริ่มที่จุดไข่ปลา หรือ SCENE_2 เพื่อเริ่มที่เนื้อเรื่องเลยก็ได้ค่ะ
+        PlaySceneMain gameplayScene = new PlaySceneMain(
+            StoryData.SCENE_2,      // ข้อมูลฉากเริ่มต้น
+            GameConstants.CHAR_AHRI, // รูปตัวละครหลัก
+            "SCENE_2"               // ชื่อฉากเริ่มต้น
+        );
+        
+        mainContainer.add(gameplayScene, "PLAY_SCENE");
     }
 
     private static void initBrightnessSystem() {
@@ -79,5 +82,10 @@ public class Main {
 
     public static void repaintBrightness() {
         if (brightnessOverlay != null) brightnessOverlay.repaint();
+    }
+    
+    // ✅ เพิ่ม Method สำหรับสลับหน้าจอให้เรียกใช้ง่ายๆ
+    public static void showScreen(String screenName) {
+        cardLayout.show(mainContainer, screenName);
     }
 }

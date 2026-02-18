@@ -12,21 +12,22 @@ public class TestMain {
             JFrame frame = new JFrame("Testing PlaySceneMain");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             
-            // ✅ ใช้ขนาด 800x600 ที่ Ahri ตั้งไว้เป็นค่ามาตรฐาน
+            // ✅ ใช้ขนาด 800x600 มาตรฐาน
             frame.setSize(800, 600);
             frame.setLayout(new BorderLayout());
 
-            // ✅ สร้างหน้า PlaySceneMain โดยส่งข้อมูลทดสอบเข้าไป
-            // หนูสามารถเปลี่ยนฉากหรือตัวละครตรงนี้เพื่อเช็คความเรียบร้อยได้เลยค่ะ
+            // ✅ แก้ไขตรงนี้: ลบวงเล็บปิดที่เกินมา และลบ "PLAY_SCENE" ออก
+            // เพราะในไฟล์ทดสอบนี้เราแอดลง BorderLayout โดยตรง ไม่ได้ใช้ CardLayout ค่ะ
+            // ใน TestMain.java
             PlaySceneMain testScene = new PlaySceneMain(
-                StoryData.SCENE_1, 
-                GameConstants.BG_SCHOOL, 
-                GameConstants.CHAR_AHRI
+                StoryData.SCENE_1,      // ✅ เริ่มที่ฉาก 1
+                GameConstants.CHAR_AHRI,
+                "SCENE_1"               // ✅ ระบุชื่อว่าเป็นฉาก 1
             );
 
             frame.add(testScene, BorderLayout.CENTER);
 
-            // ✅ เรียกคำสั่งจัด Layout ที่เราเขียนไว้เพื่อให้ UI แสดงผลถูกต้อง
+            // ✅ เรียกคำสั่งจัด Layout ให้แสดงผลถูกต้อง
             testScene.revalidate();
             
             frame.setLocationRelativeTo(null);

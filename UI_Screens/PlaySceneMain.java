@@ -8,30 +8,31 @@ import UI_Components.CharacterSprite;
 import model.GameConstants; 
 
 public class PlaySceneMain extends JPanel {
-    // ✅ เปลี่ยนจาก String[] เป็น Object[][] เพื่อเก็บ {ชื่อ, บทพูด, ไฟล์ภาพ}
     private Object[][] currentSceneData; 
-    private String currentBG;          
-    private String currentChar;        
+    private String currentBG = "";        
+    private String currentChar;          
+    private String sceneName = ""; 
     
-    private int storyIndex = 0;
-    private String fullText = "";
-    private int charIndex = 0;
-    private String currentSpeaker = "อวี่เชิน"; // เก็บชื่อคนพูดปัจจุบัน
+    private int storyIndex = 0;          
+    private String fullText = "";        
+    private int charIndex = 0;           
+    private String currentSpeaker = "";   
     
-    private JLabel bgLayer;
+    private JLabel bgLayer;              
     private CharacterSprite characterLayer; 
-    private DialogueBox dialogueBox; 
-    private Timer typeTimer;
+    private DialogueBox dialogueBox;     
+    private Timer typeTimer;             
 
-    // ✅ ปรับ Constructor ให้รับ Object[][]
-    public PlaySceneMain(Object[][] sceneData, String bgPath, String charPath) {
-        this.currentSceneData = sceneData;
-        this.currentBG = bgPath;
+    public PlaySceneMain(Object[][] sceneData, String charPath, String sceneName) {
+        this.currentSceneData = sceneData; 
         this.currentChar = charPath;
+        this.sceneName = sceneName; 
 
         setLayout(null);
         setOpaque(true);
-        setupUIComponents();
+        setBackground(Color.BLACK); 
+        
+        setupUIComponents(); 
         
         this.addComponentListener(new ComponentAdapter() {
             @Override
@@ -40,12 +41,9 @@ public class PlaySceneMain extends JPanel {
             }
         });
 
-        dialogueBox.setOnNextRequested(() -> {
-            handleInteraction();
-        });
+        dialogueBox.setOnNextRequested(this::handleInteraction);
 
         if (currentSceneData != null && currentSceneData.length > 0) {
-            // ✅ เริ่มฉากแรกด้วยข้อมูลชุดแรก
             updateScene(currentSceneData[storyIndex]);
         }
 
@@ -57,29 +55,51 @@ public class PlaySceneMain extends JPanel {
         });
     }
 
+    // ✅ ระบบโหลดฉากใหม่ที่คลีนขึ้น
+    public void loadNewScene(Object[][] nextSceneData, String newSceneName) {
+        if (nextSceneData == null || nextSceneData.length == 0) {
+            core.Main.showScreen("MENU");
+            return;
+        }
+        this.currentSceneData = nextSceneData;
+        this.sceneName = newSceneName; 
+        this.storyIndex = 0;
+        updateScene(currentSceneData[storyIndex]);
+        revalidate();
+        repaint();
+    }
+
     private void setupUIComponents() {
         bgLayer = new JLabel() {
             @Override
             protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                if (currentBG == null || currentBG.isEmpty() || currentBG.equals("none")) {
+                    g.setColor(Color.BLACK);
+                    g.fillRect(0, 0, getWidth(), getHeight());
+                    return;
+                }
                 try {
-                    java.net.URL imgURL = getClass().getClassLoader().getResource(currentBG);
-                    if (imgURL != null) {
-                        Image img = new ImageIcon(imgURL).getImage();
+                    ImageIcon icon = new ImageIcon(currentBG);
+                    Image img = icon.getImage();
+                    if (img != null && img.getWidth(null) != -1) {
                         float scale = Math.max((float)getWidth() / img.getWidth(this), (float)getHeight() / img.getHeight(this));
                         int drawW = (int)(img.getWidth(this) * scale);
                         int drawH = (int)(img.getHeight(this) * scale);
                         g.drawImage(img, (getWidth() - drawW) / 2, (getHeight() - drawH) / 2, drawW, drawH, this);
                     }
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                    System.err.println("Error rendering background: " + currentBG);
+                }
             }
         };
         
         characterLayer = new CharacterSprite(currentChar); 
         dialogueBox = new DialogueBox(); 
 
-        add(dialogueBox);  
-        add(characterLayer); 
-        add(bgLayer);           
+        add(dialogueBox);     
+        add(characterLayer);  
+        add(bgLayer);         
     }
 
     private void updateUIStyles() {
@@ -100,13 +120,11 @@ public class PlaySceneMain extends JPanel {
         dialogueBox.updateLayout(groupW, groupH, h); 
 
         if (fullText != null && !fullText.isEmpty()) {
-            dialogueBox.setText(currentSpeaker, fullText.substring(0, charIndex));
+            dialogueBox.setText(currentSpeaker, fullText.substring(0, Math.min(charIndex, fullText.length())));
         }
-
-        revalidate();
-        repaint();
     }
 
+    // ✅ ปรับปรุง handleInteraction ให้เหลือแค่ Logic พื้นฐาน
     private void handleInteraction() {
         if (typeTimer != null && typeTimer.isRunning()) {
             typeTimer.stop();
@@ -115,29 +133,48 @@ public class PlaySceneMain extends JPanel {
         } else {
             storyIndex++;
             if (storyIndex < currentSceneData.length) {
-                // ✅ ส่งข้อมูลแถวถัดไปไปอัปเดตหน้าจอ
                 updateScene(currentSceneData[storyIndex]);
             } else {
-                System.out.println("จบฉากแล้วจ้า Ahri!");
+                // ✅ แก้ไขตรงนี้: สั่งให้ไปฉากถัดไปแทนการกลับเมนู
+                System.out.println("Finished " + sceneName + ", moving to next scene...");
+                
+                if (sceneName.equals("SCENE_1")) {
+                    loadNewScene(model.StoryData.SCENE_2, "SCENE_2");
+                } else if (sceneName.equals("SCENE_2")) {
+                    loadNewScene(model.StoryData.SCENE_3, "SCENE_3");
+                } else if (sceneName.equals("SCENE_3")) {
+                    loadNewScene(model.StoryData.SCENE_4, "SCENE_4");
+                } else {
+                    // ถ้าจบ SCENE_4 (ฉากสุดท้าย) แล้วจริงๆ ค่อยกลับเมนูค่ะ
+                    //core.Main.showScreen("MENU"); 
+                }
             }
         }
     }
 
-    // ✅ เมธอดใหม่: อัปเดตทั้ง ชื่อ, ข้อความ และสีหน้าตัวละครพร้อมกัน
     private void updateScene(Object[] lineData) {
-        currentSpeaker = (String) lineData[0];
-        fullText = (String) lineData[1];
-        String charImage = (String) lineData[2];
+        if (lineData == null || lineData.length < 2) return; 
 
-        // 1. เปลี่ยนรูปตัวละคร (ต้องมั่นใจว่าใน CharacterSprite มีเมธอด updateCharacter นะคะ)
-        if (characterLayer != null) {
-            characterLayer.updateCharacter(charImage);
+        currentSpeaker = (String) lineData[0]; 
+        fullText = (String) lineData[1];
+
+        if (lineData.length >= 3) {
+            String charImage = (String) lineData[2];
+            if (characterLayer != null) characterLayer.updateCharacter(charImage);
         }
 
-        // 2. เริ่มตัวหนังสือวิ่ง
+        if (lineData.length >= 4) {
+            String bgImage = (String) lineData[3];
+            if (bgImage != null && !bgImage.equals(currentBG)) {
+                currentBG = bgImage;
+                repaint(); 
+            }
+        }
+
         charIndex = 0;
         if (typeTimer != null) typeTimer.stop();
-        
+        dialogueBox.setText(currentSpeaker, ""); 
+
         typeTimer = new Timer(GameConstants.TYPEWRITER_SPEED, e -> {
             if (charIndex < fullText.length()) {
                 charIndex++;
