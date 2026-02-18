@@ -21,7 +21,7 @@ public class TestMain {
             // ใน TestMain.java
             PlaySceneMain testScene = new PlaySceneMain(
                 StoryData.SCENE_2,      // ✅ เริ่มที่ฉาก 1
-                GameConstants.CHAR_AHRI,
+                null,                   // ✅ ไม่ต้องระบุชื่อตัวละครในฉากนี้
                 "SCENE_2"               // ✅ ระบุชื่อว่าเป็นฉาก 1
             );
 

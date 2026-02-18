@@ -56,7 +56,7 @@ public class Main {
         // เราส่ง StoryData.SCENE_1 เพื่อเริ่มที่จุดไข่ปลา หรือ SCENE_2 เพื่อเริ่มที่เนื้อเรื่องเลยก็ได้ค่ะ
         PlaySceneMain gameplayScene = new PlaySceneMain(
             StoryData.SCENE_2,      // ข้อมูลฉากเริ่มต้น
-            GameConstants.CHAR_AHRI, // รูปตัวละครหลัก
+            null, // รูปตัวละครหลัก
             "SCENE_2"               // ชื่อฉากเริ่มต้น
         );
         
