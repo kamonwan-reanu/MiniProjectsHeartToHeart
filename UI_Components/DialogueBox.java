@@ -16,8 +16,6 @@ public class DialogueBox extends JPanel {
         setLayout(null);
         setOpaque(false);
         initUI();
-        
-        // บังคับให้เริ่มติดตั้งระบบดักจับการคลิก
         setupClickHandler();
     }
 
@@ -26,15 +24,16 @@ public class DialogueBox extends JPanel {
     }
 
     private void initUI() {
-        // 1. กล่องข้อความหลัก
         mainBox = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2d = (Graphics2D) g.create();
                 g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                // สีพื้นหลังกล่อง (น้ำเงินเข้มโปร่งแสง)
                 g2d.setColor(new Color(15, 20, 35, 220)); 
                 g2d.fillRect(0, 0, getWidth(), getHeight());
                 
+                // เส้นขอบสีทอง
                 g2d.setColor(new Color(212, 175, 55, 150));
                 g2d.setStroke(new BasicStroke(1.2f));
                 g2d.drawRect(8, 8, getWidth() - 16, getHeight() - 16);
@@ -44,23 +43,20 @@ public class DialogueBox extends JPanel {
         mainBox.setLayout(null);
         mainBox.setOpaque(false);
 
-        // 2. ป้ายชื่อ
         nameLabel = new JLabel("");
         nameLabel.setForeground(new Color(100, 210, 255)); 
         nameLabel.setFont(new Font("Tahoma", Font.BOLD, 22));
         nameLabel.setVisible(false);
 
-        // 3. พื้นที่ข้อความ
         speechText = new JTextArea("");
         speechText.setEditable(false);
         speechText.setOpaque(false);
-        speechText.setFocusable(false); // ✅ ป้องกันไม่ให้ตัวหนังสือแย่ง Cursor
+        speechText.setFocusable(false);
         speechText.setLineWrap(true);       
         speechText.setWrapStyleWord(true); 
         speechText.setForeground(new Color(245, 245, 245)); 
         speechText.setFont(new Font("Tahoma", Font.PLAIN, 24));
 
-        // 4. ปุ่มวงกลม Next
         nextButton = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -89,38 +85,57 @@ public class DialogueBox extends JPanel {
                 }
             }
         };
-        
-        // ✅ ใส่ Listener ให้ "ทุกส่วน" ที่อาจโดนจิ้ม
-        this.addMouseListener(listener);        // พื้นที่ว่าง (แผ่นใสเต็มจอ)
-        mainBox.addMouseListener(listener);     // กล่องสีน้ำเงิน
-        speechText.addMouseListener(listener);  // ตัวหนังสือ (สำคัญมาก!)
-        nextButton.addMouseListener(listener);  // ปุ่ม Next
+        this.addMouseListener(listener);
+        mainBox.addMouseListener(listener);
+        speechText.addMouseListener(listener);
+        nextButton.addMouseListener(listener);
     }
 
+    // ✅ เมธอดสำหรับจัดตำแหน่งปกติ (อยู่ด้านล่าง)
     public void updateLayout(int groupW, int groupH, int h) {
         if (groupW <= 0 || groupH <= 0) return;
-
+        
+        // บังคับให้ DialogueBox (ตัวแม่) คลุมเต็มจอก่อนเพื่อให้ดักคลิกได้ทั่ว
+        this.setBounds(0, 0, getParent().getWidth(), h);
+        
         int x = (getWidth() - groupW) / 2;
-        int y = getHeight() - groupH - 45; 
+        int y = h - groupH - 45; 
         
         mainBox.setBounds(x, y, groupW, groupH);
-        
-        if (nameLabel.isVisible()) {
-            nameLabel.setBounds(45, 20, 400, 35);
-            speechText.setBounds(45, 60, groupW - 90, groupH - 85);
-        } else {
-            speechText.setBounds(45, 40, groupW - 90, groupH - 80);
-        }
-        
-        nextButton.setBounds(groupW - 65, groupH - 60, 40, 40);
-        
+        updateInsideLayout(groupW, groupH);
         revalidate();
         repaint();
     }
 
+    // ✅ เมธอดสำหรับ "วาร์ป" ไปตำแหน่งที่ต้องการ (เช่น ตอนมีตัวเลือก)
+    public void moveTo(int x, int y, int width, int height) {
+        // x, y ที่ส่งมาคือตำแหน่งของตัวกล่อง mainBox
+        int parentW = getParent().getWidth();
+        int parentH = getParent().getHeight();
+        
+        this.setBounds(0, 0, parentW, parentH); // ตัวแม่ยังคงเต็มจอ
+        mainBox.setBounds(x, y, width, height); // ตัวกล่องขยับไปตามพิกัดที่สั่ง
+        
+        updateInsideLayout(width, height); 
+        revalidate();
+        repaint();
+    }
+
+    // ✅ เมธอดรวมศูนย์สำหรับจัดวางองค์ประกอบภายในกล่อง
+    private void updateInsideLayout(int width, int height) {
+        if (nameLabel != null && speechText != null && nextButton != null) {
+            if (nameLabel.isVisible()) {
+                nameLabel.setBounds(45, 20, 400, 35);
+                speechText.setBounds(45, 60, width - 90, height - 85);
+            } else {
+                speechText.setBounds(45, 40, width - 90, height - 80);
+            }
+            nextButton.setBounds(width - 65, height - 60, 40, 40);
+        }
+    }
+
     public void setText(String name, String text) {
         speechText.setText(text);
-        
         if (name != null && !name.isEmpty() && !name.equals("narrator")) {
             nameLabel.setText(name.toUpperCase());
             nameLabel.setVisible(true);
@@ -128,6 +143,7 @@ public class DialogueBox extends JPanel {
             nameLabel.setVisible(false);
         }
         
-        updateLayout(mainBox.getWidth(), mainBox.getHeight(), getHeight());
+        // ตรวจสอบว่าถ้าไม่ได้เรียก moveTo อยู่ ก็ให้รักษาระเบียบเดิมไว้
+        updateInsideLayout(mainBox.getWidth(), mainBox.getHeight());
     }
 }
