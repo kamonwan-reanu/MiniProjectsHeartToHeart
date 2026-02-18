@@ -25,8 +25,13 @@ public class PlaySceneMain extends JPanel {
 
     public PlaySceneMain(Object[][] sceneData, String charPath, String sceneName) {
         this.currentSceneData = sceneData; 
-        this.currentChar = charPath;
         this.sceneName = sceneName; 
+
+        if (charPath != null && !charPath.startsWith("model/")) {
+            this.currentChar = GameConstants.CHAR_PATH + charPath;
+        } else {
+            this.currentChar = charPath;
+        }
 
         setLayout(null);
         setOpaque(true);
@@ -39,32 +44,30 @@ public class PlaySceneMain extends JPanel {
             public void componentResized(ComponentEvent e) {
                 updateUIStyles(); 
             }
+            @Override
+            public void componentShown(ComponentEvent e) {
+                updateUIStyles(); 
+            }
         });
 
+        // ✅ ตัวรับคลิกหลัก ย้ายไปจัดการใน DialogueBox ที่กางเต็มจอแล้ว
         dialogueBox.setOnNextRequested(this::handleInteraction);
 
         if (currentSceneData != null && currentSceneData.length > 0) {
             updateScene(currentSceneData[storyIndex]);
         }
-
-        addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                handleInteraction(); 
-            }
-        });
     }
 
-    // ✅ ระบบโหลดฉากใหม่ที่คลีนขึ้น
     public void loadNewScene(Object[][] nextSceneData, String newSceneName) {
         if (nextSceneData == null || nextSceneData.length == 0) {
-            core.Main.showScreen("MENU");
             return;
         }
         this.currentSceneData = nextSceneData;
         this.sceneName = newSceneName; 
         this.storyIndex = 0;
         updateScene(currentSceneData[storyIndex]);
+        
+        updateUIStyles();
         revalidate();
         repaint();
     }
@@ -74,22 +77,12 @@ public class PlaySceneMain extends JPanel {
             @Override
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
-                if (currentBG == null || currentBG.isEmpty() || currentBG.equals("none")) {
-                    g.setColor(Color.BLACK);
-                    g.fillRect(0, 0, getWidth(), getHeight());
-                    return;
-                }
-                try {
+                if (currentBG != null && !currentBG.isEmpty() && !currentBG.equals("none")) {
                     ImageIcon icon = new ImageIcon(currentBG);
                     Image img = icon.getImage();
-                    if (img != null && img.getWidth(null) != -1) {
-                        float scale = Math.max((float)getWidth() / img.getWidth(this), (float)getHeight() / img.getHeight(this));
-                        int drawW = (int)(img.getWidth(this) * scale);
-                        int drawH = (int)(img.getHeight(this) * scale);
-                        g.drawImage(img, (getWidth() - drawW) / 2, (getHeight() - drawH) / 2, drawW, drawH, this);
+                    if (img != null && img.getWidth(null) > 0) {
+                        g.drawImage(img, 0, 0, getWidth(), getHeight(), this);
                     }
-                } catch (Exception e) {
-                    System.err.println("Error rendering background: " + currentBG);
                 }
             }
         };
@@ -97,6 +90,7 @@ public class PlaySceneMain extends JPanel {
         characterLayer = new CharacterSprite(currentChar); 
         dialogueBox = new DialogueBox(); 
 
+        // ✅ ลำดับชั้น (Z-Order): ตัวรับคลิก (DialogueBox) ต้องอยู่หน้าสุด (Index 0)
         add(dialogueBox);     
         add(characterLayer);  
         add(bgLayer);         
@@ -107,24 +101,24 @@ public class PlaySceneMain extends JPanel {
         int h = getHeight();
         if (w <= 0 || h <= 0) return;
 
+        // พื้นหลังและตัวละครขยายเต็ม Panel
         bgLayer.setBounds(0, 0, w, h);
         characterLayer.setBounds(0, 0, w, h);
 
+        // ✅ หัวใจสำคัญ: กาง DialogueBox ให้เต็มหน้าจอเพื่อดักจับ Mouse Event ทุกจุด
+        dialogueBox.setBounds(0, 0, w, h); 
+
+        // คำนวณขนาดกล่องคำพูด (ที่อยู่ข้างใน DialogueBox อีกที)
         int groupW = (int)(w * 0.85); 
         int groupH = (int)(h * 0.25); 
-        int groupX = (w - groupW) / 2;
-        int marginBottom = (h <= 600) ? 25 : 45;
-        int groupY = h - groupH - marginBottom; 
-
-        dialogueBox.setBounds(groupX, groupY, groupW, groupH);
+        
+        // ส่งค่า h เพื่อให้ DialogueBox ไปวางกล่องไว้ข้างล่างสุดของจอ
         dialogueBox.updateLayout(groupW, groupH, h); 
-
-        if (fullText != null && !fullText.isEmpty()) {
-            dialogueBox.setText(currentSpeaker, fullText.substring(0, Math.min(charIndex, fullText.length())));
-        }
+        
+        revalidate();
+        repaint();
     }
 
-    // ✅ ปรับปรุง handleInteraction ให้เหลือแค่ Logic พื้นฐาน
     private void handleInteraction() {
         if (typeTimer != null && typeTimer.isRunning()) {
             typeTimer.stop();
@@ -135,20 +129,18 @@ public class PlaySceneMain extends JPanel {
             if (storyIndex < currentSceneData.length) {
                 updateScene(currentSceneData[storyIndex]);
             } else {
-                // ✅ แก้ไขตรงนี้: สั่งให้ไปฉากถัดไปแทนการกลับเมนู
-                System.out.println("Finished " + sceneName + ", moving to next scene...");
-                
-                if (sceneName.equals("SCENE_1")) {
-                    loadNewScene(model.StoryData.SCENE_2, "SCENE_2");
-                } else if (sceneName.equals("SCENE_2")) {
-                    loadNewScene(model.StoryData.SCENE_3, "SCENE_3");
-                } else if (sceneName.equals("SCENE_3")) {
-                    loadNewScene(model.StoryData.SCENE_4, "SCENE_4");
-                } else {
-                    // ถ้าจบ SCENE_4 (ฉากสุดท้าย) แล้วจริงๆ ค่อยกลับเมนูค่ะ
-                    //core.Main.showScreen("MENU"); 
-                }
+                handleSceneTransition();
             }
+        }
+    }
+
+    private void handleSceneTransition() {
+        if (sceneName.equals("SCENE_1")) {
+            loadNewScene(model.StoryData.SCENE_2, "SCENE_2");
+        } else if (sceneName.equals("SCENE_2")) {
+            loadNewScene(model.StoryData.SCENE_3, "SCENE_3");
+        } else if (sceneName.equals("SCENE_3")) {
+            loadNewScene(model.StoryData.SCENE_4, "SCENE_4");
         }
     }
 
@@ -159,18 +151,24 @@ public class PlaySceneMain extends JPanel {
         fullText = (String) lineData[1];
 
         if (lineData.length >= 3) {
-            String charImage = (String) lineData[2];
-            if (characterLayer != null) characterLayer.updateCharacter(charImage);
-        }
-
-        if (lineData.length >= 4) {
-            String bgImage = (String) lineData[3];
-            if (bgImage != null && !bgImage.equals(currentBG)) {
-                currentBG = bgImage;
-                repaint(); 
+            String fileName = (String) lineData[2];
+            if (fileName != null && !fileName.isEmpty()) {
+                String fullCharPath = fileName.startsWith("model/") ? fileName : GameConstants.CHAR_PATH + fileName;
+                characterLayer.updateCharacter(fullCharPath);
             }
         }
 
+        if (lineData.length >= 4) {
+            String fileName = (String) lineData[3];
+            if (fileName != null && !fileName.isEmpty() && !fileName.equals("none")) {
+                this.currentBG = fileName.startsWith("model/") ? fileName : GameConstants.SCENE_PATH + fileName; 
+                bgLayer.repaint(); 
+            }
+        }
+        startTypewriter();
+    }
+
+    private void startTypewriter() {
         charIndex = 0;
         if (typeTimer != null) typeTimer.stop();
         dialogueBox.setText(currentSpeaker, ""); 
