@@ -17,17 +17,18 @@ public class Main {
     private static JPanel brightnessOverlay;
 
     public static void main(String[] args) {
+        // ✨ ตั้งค่าฟอนต์ภาษาไทยให้ทั้งระบบ (แก้ปัญหาสี่เหลี่ยม)
+        setUIFont(new Font("Tahoma", Font.PLAIN, 18));
+
         SwingUtilities.invokeLater(() -> {
             try {
                 mainFrame = new JFrame("HeartToHeart");
                 mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
                 mainFrame.setResizable(true); 
 
-                setupScreens();
+                setupScreens(); 
                 
                 mainFrame.add(mainContainer);
-                
-                // ✅ แก้จาก pack() เป็น setSize เพื่อให้เปิดมาเป็น 1920x1080 ทันที
                 mainFrame.setSize(1920, 1080); 
                 mainFrame.setLocationRelativeTo(null); 
                 
@@ -35,11 +36,24 @@ public class Main {
                 soundManager.setVolume(0.5f);
                 
                 mainFrame.setVisible(true);
+                cardLayout.show(mainContainer, "MENU");
+
             } catch (Exception e) {
-                JOptionPane.showMessageDialog(null, "Error: " + e.getMessage());
                 e.printStackTrace();
             }
         });
+    }
+
+    // ฟังก์ชันช่วยบังคับฟอนต์ภาษาไทยให้ทุกจุด (Pop-up, ช่องพิมพ์)
+    private static void setUIFont(Font font) {
+        java.util.Enumeration<Object> keys = UIManager.getDefaults().keys();
+        while (keys.hasMoreElements()) {
+            Object key = keys.nextElement();
+            Object value = UIManager.get(key);
+            if (value instanceof javax.swing.plaf.FontUIResource) {
+                UIManager.put(key, font);
+            }
+        }
     }
 
     private static void setupScreens() {
@@ -51,10 +65,13 @@ public class Main {
             mainContainer.add(new MainMenu(titleFont, menuFont), "MENU");
             mainContainer.add(new SettingPage(subTitleFont, menuFont), "SETTING");
             mainContainer.add(new CreditPage(subTitleFont, menuFont), "CREDIT");
-            mainContainer.add(new PlayPage(subTitleFont), "PLAY");
             
-            PlaySceneMain gameplayScene = new PlaySceneMain(StoryData.SCENE_2, null, "SCENE_2");
+            // ใช้ชื่อ Key ว่า PLAY_PAGE ให้ตรงกับในเมนูนะคะ
+            mainContainer.add(new PlayPage(subTitleFont), "PLAY_PAGE");
+            
+            PlaySceneMain gameplayScene = new PlaySceneMain(StoryData.SCENE_1, null, "SCENE_1");
             mainContainer.add(gameplayScene, "PLAY_SCENE");
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -64,11 +81,12 @@ public class Main {
         brightnessOverlay = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                Graphics2D g2d = (Graphics2D) g;
+                Graphics2D g2d = (Graphics2D) g.create();
+                // 🛑 ส่วนที่ต้องระวัง: ถ้า brightnessAlpha = 1.0f มันจะดำสนิทจนมองไม่เห็นข้อความด้านล่าง
                 g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, brightnessAlpha));
                 g2d.setColor(overlayColor);
                 g2d.fillRect(0, 0, getWidth(), getHeight());
+                g2d.dispose();
             }
         };
         brightnessOverlay.setOpaque(false);

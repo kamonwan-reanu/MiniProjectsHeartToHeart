@@ -20,9 +20,9 @@ public class TestMain {
             // เพราะในไฟล์ทดสอบนี้เราแอดลง BorderLayout โดยตรง ไม่ได้ใช้ CardLayout ค่ะ
             // ใน TestMain.java
             PlaySceneMain testScene = new PlaySceneMain(
-                StoryData.SCENE_2,      // ✅ เริ่มที่ฉาก 1
+                StoryData.SCENE_2,      // ✅ เริ่มที่ฉาก 2
                 null,                   // ✅ ไม่ต้องระบุชื่อตัวละครในฉากนี้
-                "SCENE_2"               // ✅ ระบุชื่อว่าเป็นฉาก 1
+                "SCENE_3"               // ✅ ระบุชื่อว่าเป็นฉาก 
             );
 
             frame.add(testScene, BorderLayout.CENTER);

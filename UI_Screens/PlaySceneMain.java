@@ -7,34 +7,35 @@ import UI_Components.DialogueBox;
 import UI_Components.CharacterSprite; 
 import model.GameConstants; 
 import model.SoundManager; 
+import model.StoryData; 
 
 public class PlaySceneMain extends JPanel {
     private Object[][] currentSceneData; 
-    private String currentBG = "";        
-    private String currentChar;          
+    private String currentBG = "";                 
+    private String currentChar = "";                   
     private String sceneName = ""; 
     
-    private int storyIndex = 0;          
-    private String fullText = "";        
-    private int charIndex = 0;           
+    private double bgScaleOffset = 0.0; 
+    private int bgOffsetX = 0;          
+    private int bgOffsetY = 0;          
+
+    private int storyIndex = 0;                   
+    private String fullText = "";                
+    private int charIndex = 0;                    
     private String currentSpeaker = "";   
     
-    private JLabel bgLayer;              
+    private JLabel bgLayer;                       
     private CharacterSprite characterLayer; 
     private DialogueBox dialogueBox;     
     private Timer typeTimer;             
-    
-    // ✅ จุดที่ 1: ตรวจสอบว่า SoundManager ในโฟลเดอร์ model ไม่มี Error นะคะ
     private SoundManager soundManager = new SoundManager();
 
     public PlaySceneMain(Object[][] sceneData, String charPath, String sceneName) {
         this.currentSceneData = sceneData; 
         this.sceneName = sceneName; 
 
-        if (charPath != null && !charPath.startsWith("model/")) {
-            this.currentChar = GameConstants.CHAR_PATH + charPath;
-        } else {
-            this.currentChar = charPath;
+        if (charPath != null && !charPath.isEmpty() && !charPath.equalsIgnoreCase("none")) {
+            this.currentChar = charPath.startsWith("model/") ? charPath : GameConstants.CHAR_PATH + charPath;
         }
 
         setLayout(null);
@@ -45,33 +46,20 @@ public class PlaySceneMain extends JPanel {
         
         this.addComponentListener(new ComponentAdapter() {
             @Override
-            public void componentResized(ComponentEvent e) {
-                updateUIStyles(); 
-            }
+            public void componentResized(ComponentEvent e) { updateUIStyles(); }
+            
             @Override
-            public void componentShown(ComponentEvent e) {
-                updateUIStyles(); 
+            public void componentShown(ComponentEvent e) { 
+                if (PlaySceneMain.this.sceneName.equals("SCENE_1")) {
+                    loadNewScene(StoryData.SCENE_2, "SCENE_2");
+                } else {
+                    updateUIStyles();
+                    updateScene(currentSceneData[storyIndex]);
+                }
             }
         });
 
         dialogueBox.setOnNextRequested(this::handleInteraction);
-
-        if (currentSceneData != null && currentSceneData.length > 0) {
-            updateScene(currentSceneData[storyIndex]);
-        }
-    }
-
-    public void loadNewScene(Object[][] nextSceneData, String newSceneName) {
-        if (nextSceneData == null || nextSceneData.length == 0) return;
-        
-        this.currentSceneData = nextSceneData;
-        this.sceneName = newSceneName; 
-        this.storyIndex = 0;
-        updateScene(currentSceneData[storyIndex]);
-        
-        updateUIStyles();
-        revalidate();
-        repaint();
     }
 
     private void setupUIComponents() {
@@ -80,38 +68,130 @@ public class PlaySceneMain extends JPanel {
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
                 if (currentBG != null && !currentBG.isEmpty() && !currentBG.equals("none")) {
-                    ImageIcon icon = new ImageIcon(currentBG);
-                    Image img = icon.getImage();
+                    Image img = new ImageIcon(currentBG).getImage();
                     if (img != null && img.getWidth(null) > 0) {
-                        g.drawImage(img, 0, 0, getWidth(), getHeight(), this);
+                        Graphics2D g2d = (Graphics2D) g;
+                        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                        int panelW = getWidth();
+                        int panelH = getHeight();
+                        int imgW = img.getWidth(null);
+                        int imgH = img.getHeight(null);
+                        double scaleX = (double) panelW / imgW;
+                        double scaleY = (double) panelH / imgH;
+                        double finalScale = Math.max(scaleX, scaleY) + bgScaleOffset;
+                        int drawW = (int) (imgW * finalScale);
+                        int drawH = (int) (imgH * finalScale);
+                        int x = (panelW - drawW) / 2 + bgOffsetX;
+                        int y = (panelH - drawH) / 2 + bgOffsetY;
+                        g2d.drawImage(img, x, y, drawW, drawH, this);
                     }
                 }
             }
         };
         
-        characterLayer = new CharacterSprite(currentChar); 
-        dialogueBox = new DialogueBox(); 
+        characterLayer = new CharacterSprite(currentChar) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                if (currentChar != null && !currentChar.isEmpty() && !currentChar.equals("none")) {
+                    Image img = new ImageIcon(currentChar).getImage();
+                    if (img != null && img.getWidth(null) > 0) {
+                        int panelH = getHeight();
+                        int imgW = img.getWidth(null);
+                        int imgH = img.getHeight(null);
+                        double ratio = (double) panelH / imgH;
+                        int drawW = (int) (imgW * ratio);
+                        int drawH = panelH;
+                        g.drawImage(img, (getWidth() - drawW) / 2, 0, drawW, drawH, this);
+                    }
+                }
+            }
+        };
 
-        add(dialogueBox);     
-        add(characterLayer);  
-        add(bgLayer);         
+        dialogueBox = new DialogueBox(); 
+        add(dialogueBox);      
+        add(characterLayer);   
+        add(bgLayer);          
+        
+        setComponentZOrder(dialogueBox, 0);
+        setComponentZOrder(characterLayer, 1);
+        setComponentZOrder(bgLayer, 2);
     }
 
     private void updateUIStyles() {
         int w = getWidth();
         int h = getHeight();
         if (w <= 0 || h <= 0) return;
-
         bgLayer.setBounds(0, 0, w, h);
-        characterLayer.setBounds(0, 0, w, h);
+        characterLayer.setBounds(0, 0, w, h); 
         dialogueBox.setBounds(0, 0, w, h); 
-
-        int groupW = (int)(w * 0.85); 
-        int groupH = (int)(h * 0.25); 
-        
-        dialogueBox.updateLayout(groupW, groupH, h); 
+        dialogueBox.updateLayout((int)(w * 0.85), (int)(h * 0.25), h); 
         revalidate();
         repaint();
+    }
+
+    private void updateScene(Object[] lineData) {
+        if (lineData == null || lineData.length < 2) return; 
+
+        currentSpeaker = ""; 
+        Object speakerData = lineData[0];
+        
+        if (speakerData != null) {
+            String speakerStr = speakerData.toString().trim();
+            
+            // เช็ค Keyword "PLAYER" เพื่อเอาชื่อไปใส่บนหัวกล่อง
+            if (speakerStr.equalsIgnoreCase("PLAYER") || 
+                speakerStr.equals("........") || 
+                speakerData == GameConstants.PLAYER_NAME) {
+                
+                currentSpeaker = GameConstants.PLAYER_NAME;
+            } 
+            else if (speakerStr.isEmpty() || speakerStr.equalsIgnoreCase("none")) {
+                currentSpeaker = ""; 
+            } 
+            else {
+                currentSpeaker = speakerStr; 
+            }
+        }
+        
+        dialogueBox.setText(currentSpeaker, ""); 
+
+        // --- จัดการเนื้อหาบทพูด ---
+        fullText = (String) lineData[1];
+        
+        // ✨ แก้ไข: แทนที่ชื่อผู้เล่นเฉพาะเมื่อพิมพ์ [PLAYER] เท่านั้น
+        // จะไม่ไปยุ่งกับเครื่องหมายจุดไข่ปลา (...) อีกแล้วค่ะ
+        if (fullText.contains("[PLAYER]")) {
+            fullText = fullText.replace("[PLAYER]", GameConstants.PLAYER_NAME);
+        }
+
+        // --- ส่วนจัดการรูปภาพและเสียง (คงเดิม) ---
+        if (lineData.length >= 3) {
+            String fileName = (String) lineData[2];
+            if (fileName != null && !fileName.isEmpty() && !fileName.equals("none")) {
+                this.currentChar = fileName.startsWith("model/") ? fileName : GameConstants.CHAR_PATH + fileName;
+            } else if ("none".equals(fileName)) {
+                this.currentChar = "";
+            }
+        }
+
+        if (lineData.length >= 4) {
+            String fileName = (String) lineData[3];
+            if (fileName != null && !fileName.isEmpty() && !fileName.equals("none")) {
+                this.currentBG = fileName.startsWith("model/") ? fileName : GameConstants.SCENE_PATH + fileName; 
+            }
+        }
+
+        if (lineData.length >= 5) {
+            String soundName = (String) lineData[4];
+            if (soundName != null && !soundName.isEmpty() && !soundName.equals("none")) {
+                String fullPath = GameConstants.SOUND_PATH + soundName + ".wav";
+                if (soundName.startsWith("BGM")) soundManager.playBGM(fullPath);
+                else soundManager.playSE(fullPath);
+            }
+        }
+
+        repaint(); 
+        startTypewriter(); 
     }
 
     private void handleInteraction() {
@@ -121,79 +201,34 @@ public class PlaySceneMain extends JPanel {
             dialogueBox.setText(currentSpeaker, fullText);
         } else {
             storyIndex++;
-            if (storyIndex < currentSceneData.length) {
-                updateScene(currentSceneData[storyIndex]);
-            } else {
-                handleSceneTransition();
-            }
+            if (storyIndex < currentSceneData.length) updateScene(currentSceneData[storyIndex]);
+            else handleSceneTransition();
         }
     }
 
     private void handleSceneTransition() {
-        if (sceneName.equals("SCENE_1")) {
-            loadNewScene(model.StoryData.SCENE_2, "SCENE_2");
-        } else if (sceneName.equals("SCENE_2")) {
-            loadNewScene(model.StoryData.SCENE_3, "SCENE_3");
-        } else if (sceneName.equals("SCENE_3")) {
-            loadNewScene(model.StoryData.SCENE_4, "SCENE_4");
-        }
-        
+        if (sceneName.equals("SCENE_1")) loadNewScene(StoryData.SCENE_2, "SCENE_2");
+        else if (sceneName.equals("SCENE_2")) loadNewScene(StoryData.SCENE_3, "SCENE_3");
+        else if (sceneName.equals("SCENE_3")) loadNewScene(StoryData.SCENE_4, "SCENE_4");
     }
 
-    private void updateScene(Object[] lineData) {
-        if (lineData == null || lineData.length < 2) return; 
-
-        currentSpeaker = (String) lineData[0]; 
-        fullText = (String) lineData[1];
-
-        // 1. อัปเดตตัวละคร
-        if (lineData.length >= 3) {
-            String fileName = (String) lineData[2];
-            if (fileName != null && !fileName.isEmpty()) {
-                String fullCharPath = fileName.startsWith("model/") ? fileName : GameConstants.CHAR_PATH + fileName;
-                characterLayer.updateCharacter(fullCharPath);
-            }
-        }
-
-        // 2. อัปเดตพื้นหลัง
-        if (lineData.length >= 4) {
-            String fileName = (String) lineData[3];
-            if (fileName != null && !fileName.isEmpty() && !fileName.equals("none")) {
-                this.currentBG = fileName.startsWith("model/") ? fileName : GameConstants.SCENE_PATH + fileName; 
-                bgLayer.repaint(); 
-            }
-        }
-
-        // ✅ จุดที่ 2: ระบบเสียง (แก้ SOUND_PATH ให้เรียกจาก GameConstants ให้ถูกต้อง)
-        if (lineData.length >= 5) {
-            String soundName = (String) lineData[4];
-            if (soundName != null && !soundName.isEmpty() && !soundName.equals("none")) {
-                // ตรวจสอบว่า GameConstants มี SOUND_PATH หรือยัง
-                String fullPath = GameConstants.SOUND_PATH + soundName + ".wav";
-                
-                if (soundName.startsWith("BGM")) {
-                    soundManager.playBGM(fullPath);
-                } else {
-                    soundManager.playSE(fullPath);
-                }
-            }
-        }
-
-        startTypewriter();
+    public void loadNewScene(Object[][] nextSceneData, String newSceneName) {
+        if (nextSceneData == null || nextSceneData.length == 0) return;
+        this.currentSceneData = nextSceneData;
+        this.sceneName = newSceneName; 
+        this.storyIndex = 0;
+        updateScene(currentSceneData[storyIndex]);
+        updateUIStyles();
     }
 
     private void startTypewriter() {
         charIndex = 0;
         if (typeTimer != null) typeTimer.stop();
-        dialogueBox.setText(currentSpeaker, ""); 
-
         typeTimer = new Timer(GameConstants.TYPEWRITER_SPEED, e -> {
             if (charIndex < fullText.length()) {
                 charIndex++;
                 dialogueBox.setText(currentSpeaker, fullText.substring(0, charIndex));
-            } else {
-                typeTimer.stop();
-            }
+            } else typeTimer.stop();
         });
         typeTimer.start();
     }

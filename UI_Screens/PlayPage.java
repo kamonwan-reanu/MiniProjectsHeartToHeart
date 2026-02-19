@@ -1,17 +1,12 @@
 package UI_Screens;
 
-
-
 import javax.swing.*;
 import javax.swing.text.*;
 import java.awt.*;
-import java.awt.event.ComponentAdapter;
-import java.awt.event.ComponentEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-
+import java.awt.event.*;
 import core.Main; 
 import model.StoryData;
+import model.GameConstants;
 
 public class PlayPage extends JPanel {
     private int storyIndex = 0;
@@ -25,7 +20,7 @@ public class PlayPage extends JPanel {
 
     public PlayPage(Font tFont) {
         setLayout(new GridBagLayout());
-        setBackground(Color.BLACK);
+        setBackground(Color.BLACK); 
 
         textPane = new JTextPane() {
             @Override
@@ -43,15 +38,17 @@ public class PlayPage extends JPanel {
         textPane.setOpaque(false);
         textPane.setForeground(Color.WHITE);
         textPane.setHighlighter(null); 
+        textPane.setFont(new Font("Tahoma", Font.PLAIN, 32));
 
         this.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentShown(ComponentEvent e) {
-                resetAndStart(); 
-            }
-            @Override
-            public void componentResized(ComponentEvent e) {
+                // 🛠️ แก้ปัญหาจอดำสนิท: เมื่อหน้านี้ปรากฏ ต้องสั่งเปิดม่าน GlassPane ของ Main ออก
+                Main.brightnessAlpha = 0.0f;
+                Main.repaintBrightness();
+                
                 updateTextLayout();
+                resetAndStart();
             }
         });
 
@@ -72,16 +69,31 @@ public class PlayPage extends JPanel {
     private void resetAndStart() {
         storyIndex = 0;
         textAlpha = 1.0f;
+        textPane.setText("");
         
-        // แก้ไขการเข้าถึงตัวแปรใน Main (ใช้ชื่อคลาส Main ให้ถูกต้อง)
-        Main.brightnessAlpha = 0.0f; 
-        Main.repaintBrightness();
-        
-        // ✅ เปลี่ยนวิธีดึงข้อมูล: ดึงเฉพาะข้อความจาก Object[][] (index 1)
         if (StoryData.SCENE_1 != null && StoryData.SCENE_1.length > 0) {
             String initialText = (String) StoryData.SCENE_1[storyIndex][1]; 
             startTypewriter(initialText);
         }
+    }
+
+    private void startTypewriter(String text) {
+        fullText = text.replace("[PLAYER]", GameConstants.PLAYER_NAME);
+        charIndex = 0;
+        textAlpha = 1.0f; 
+        textPane.setText(""); 
+        
+        if (typeTimer != null) typeTimer.stop();
+        typeTimer = new Timer(GameConstants.TYPEWRITER_SPEED, e -> {
+            if (charIndex < fullText.length()) {
+                charIndex++;
+                textPane.setText(fullText.substring(0, charIndex)); 
+                centerText(); 
+            } else {
+                typeTimer.stop();
+            }
+        });
+        typeTimer.start();
     }
 
     private void handlePageClick() {
@@ -90,8 +102,7 @@ public class PlayPage extends JPanel {
             textPane.setText(fullText); 
             charIndex = fullText.length();
             centerText(); 
-        } 
-        else if (fadeTimer == null || !fadeTimer.isRunning()) {
+        } else if (fadeTimer == null || !fadeTimer.isRunning()) {
             startFadeOutNext();
         }
     }
@@ -104,37 +115,12 @@ public class PlayPage extends JPanel {
     }
 
     private void updateTextLayout() {
-        int w = getWidth();
+        int w = getWidth(); 
         int h = getHeight();
         if (w <= 0 || h <= 0) return;
-
-        int fontSize = Math.max(22, h / 28); 
-        textPane.setFont(new Font("Tahoma", Font.PLAIN, fontSize));
         textPane.setPreferredSize(new Dimension((int)(w * 0.8), h / 2));
-        
+        textPane.setFont(new Font("Tahoma", Font.PLAIN, Math.max(24, h / 30)));
         revalidate();
-    }
-
-    private void startTypewriter(String text) {
-        fullText = text;
-        charIndex = 0;
-        textAlpha = 1.0f;
-        textPane.setText(""); 
-        
-        if (typeTimer != null) typeTimer.stop();
-        if (fadeTimer != null) fadeTimer.stop();
-
-        typeTimer = new Timer(50, e -> {
-            if (charIndex < fullText.length()) {
-                charIndex++;
-                textPane.setText(fullText.substring(0, charIndex)); 
-                centerText(); 
-            } else {
-                typeTimer.stop();
-            }
-        });
-        typeTimer.start();
-        repaint();
     }
 
     private void startFadeOutNext() {
@@ -153,13 +139,15 @@ public class PlayPage extends JPanel {
     }
 
     private void goToNextSentence() {
-        // ✅ ตรวจสอบข้อมูลก่อนดึงมาแสดงผล
         if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
-            String nextText = (String) StoryData.SCENE_1[storyIndex][1];
-            startTypewriter(nextText);
+            startTypewriter((String) StoryData.SCENE_1[storyIndex][1]);
         } else {
-            textPane.setText(""); 
-            // ✅ เปลี่ยนหน้าไปยังฉากเล่นเกมหลัก
+            // 🛠️ แก้ปัญหาไม่ไป SCENE_1: 
+            // 1. เปิดม่านดำออกก่อนเปลี่ยนหน้า
+            Main.brightnessAlpha = 0.0f;
+            Main.repaintBrightness();
+            
+            // 2. สั่งเปลี่ยนหน้า
             if (Main.cardLayout != null) {
                 Main.cardLayout.show(Main.mainContainer, "PLAY_SCENE"); 
             }

@@ -1,7 +1,6 @@
 package model;
 
 public class StoryData {
-    // ✅ SCENE_1: บทนำที่เป็นจุดไข่ปลา (รูปที่ 1 ของหนู)
     public static final Object[][] SCENE_1 = {
         {"", "ความรักมีหลายรสชาติ", "", ""},
         {"", "บางครั้งหวานละมุน จนหัวใจพองฟูเหมือนขนมสายไหมที่ละลายช้า ๆ บนปลายลิ้น", "", ""},
@@ -10,10 +9,8 @@ public class StoryData {
         {"", "และเรื่องของฉัน กำลังจะกลายเป็นหนึ่งในนั้น", "", ""},
     };
 
-    // ✅ SCENE_2: อวี่เชินเริ่มพูด (แก้จาก String[] เป็น Object[][] เพื่อไม่ให้ Error)
    public static final Object[][] SCENE_2 = {
-        // ใส่แค่ชื่อไฟล์ .jpg ได้เลย ระบบจะไปเติม model/img_scene/ ให้เอง
-        {"", "เจ็ดปี...", "", "whiteroom.png"},
+        {"", "เจ็ดปี...", "Teeraphat.png", "whiteroom.png"},
         {"", "ไม่ใช่ตัวเลขเล็ก ๆ มันยาวพอให้ฉันจำได้ว่าเขาชอบกาแฟแบบไหน", "", "whiteroom.png"},
         {"", "ยาวพอให้คุ้นเคยกับจังหวะลมหายใจของกันและกัน", "", "whiteroom.png"},
         {"", "ยาวพอให้เริ่มเรียกเขาในใจว่า “อนาคต”", "", "whiteroom.png"},
@@ -33,15 +30,15 @@ public class StoryData {
 
     };
     
-    // ✅ SCENE_3: ตึกเรียนเก่า
     public static final Object[][] SCENE_3 = {
-        {"อวี่เชิน", ".................................", "char/ahri_happy.png", "scene1.jpg"},
-        {"อวี่เชิน", "มันน่าสนใจกว่าที่คิดนะว่าไหม?", "char/ahri_smile.png", "scene1.jpg"}
+        {"PLAYER", "สวัสดี ฉันชื่อ นะ", "ahri.png", "scene1.jpg"},
+        {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.png", "scene1.jpg"}
     };
 
-    // ✅ SCENE_4: สวนหลังโรงเรียน
     public static final Object[][] SCENE_4 = {
-        {"อวี่เชิน", "...............", "char/ahri_happy.png", "img_scene/scene1.jpg"},
-        {"อวี่เชิน", "...............", "char/ahri_smile.png", "img_scene/old_building.jpg"}
+        {"PLAYER", "ยินดีที่ได้รู้จักนะ...............", "char/ahri_happy.png", "img_scene/scene1.jpg"},
+        {"PLAYER", "ยินดีที่ได้รู้จักนะ...............", "char/ahri_smile.png", "img_scene/old_building.jpg"}
     };
+
+    
 }
