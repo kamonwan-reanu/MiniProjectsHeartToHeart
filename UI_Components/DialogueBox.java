@@ -12,12 +12,12 @@ public class DialogueBox extends JPanel {
     private JPanel nextButton;
     private Runnable onNextRequested;
 
+    private int lastW = 0, lastH = 0;
+
     public DialogueBox() {
         setLayout(null);
         setOpaque(false);
         initUI();
-        
-        // บังคับให้เริ่มติดตั้งระบบดักจับการคลิก
         setupClickHandler();
     }
 
@@ -26,41 +26,39 @@ public class DialogueBox extends JPanel {
     }
 
     private void initUI() {
-        // 1. กล่องข้อความหลัก
         mainBox = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2d = (Graphics2D) g.create();
                 g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2d.setColor(new Color(15, 20, 35, 220)); 
+                g2d.setColor(new Color(15, 20, 35, 235)); 
                 g2d.fillRect(0, 0, getWidth(), getHeight());
                 
-                g2d.setColor(new Color(212, 175, 55, 150));
-                g2d.setStroke(new BasicStroke(1.2f));
-                g2d.drawRect(8, 8, getWidth() - 16, getHeight() - 16);
+                g2d.setColor(new Color(212, 175, 55, 180));
+                g2d.setStroke(new BasicStroke(2.0f));
+                g2d.drawRect(5, 5, getWidth() - 10, getHeight() - 10);
                 g2d.dispose();
             }
         };
         mainBox.setLayout(null);
         mainBox.setOpaque(false);
 
-        // 2. ป้ายชื่อ
         nameLabel = new JLabel("");
+        // ✨ กลับมาใช้สีฟ้าตัวเดิมที่ Ahri ชอบค่ะ
         nameLabel.setForeground(new Color(100, 210, 255)); 
-        nameLabel.setFont(new Font("Tahoma", Font.BOLD, 22));
+        nameLabel.setFont(new Font("Tahoma", Font.BOLD, 24));
+        nameLabel.setHorizontalAlignment(SwingConstants.LEFT);
         nameLabel.setVisible(false);
 
-        // 3. พื้นที่ข้อความ
         speechText = new JTextArea("");
         speechText.setEditable(false);
         speechText.setOpaque(false);
-        speechText.setFocusable(false); // ✅ ป้องกันไม่ให้ตัวหนังสือแย่ง Cursor
+        speechText.setFocusable(false); 
         speechText.setLineWrap(true);       
         speechText.setWrapStyleWord(true); 
         speechText.setForeground(new Color(245, 245, 245)); 
-        speechText.setFont(new Font("Tahoma", Font.PLAIN, 24));
+        speechText.setFont(new Font("Tahoma", Font.PLAIN, 22));
 
-        // 4. ปุ่มวงกลม Next
         nextButton = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -69,7 +67,7 @@ public class DialogueBox extends JPanel {
                 g2d.setColor(new Color(150, 230, 255, 200)); 
                 g2d.fillOval(0, 0, getWidth(), getHeight());
                 g2d.setColor(Color.BLACK);
-                g2d.fillPolygon(new int[]{15, 15, 25}, new int[]{12, 28, 20}, 3);
+                g2d.fillPolygon(new int[]{12, 12, 25}, new int[]{10, 30, 20}, 3);
                 g2d.dispose();
             }
         };
@@ -78,56 +76,72 @@ public class DialogueBox extends JPanel {
         mainBox.add(speechText);
         mainBox.add(nextButton);
         add(mainBox);
+
+        // ✨ บังคับลำดับการวาด ให้ป้ายชื่ออยู่บนสุด (Z-Order 0)
+        mainBox.setComponentZOrder(nameLabel, 0);
     }
 
     private void setupClickHandler() {
         MouseAdapter listener = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) { 
-                if (onNextRequested != null) {
-                    onNextRequested.run();
-                }
+                if (onNextRequested != null) onNextRequested.run();
             }
         };
-        
-        // ✅ ใส่ Listener ให้ "ทุกส่วน" ที่อาจโดนจิ้ม
-        this.addMouseListener(listener);        // พื้นที่ว่าง (แผ่นใสเต็มจอ)
-        mainBox.addMouseListener(listener);     // กล่องสีน้ำเงิน
-        speechText.addMouseListener(listener);  // ตัวหนังสือ (สำคัญมาก!)
-        nextButton.addMouseListener(listener);  // ปุ่ม Next
+        this.addMouseListener(listener);
+        mainBox.addMouseListener(listener);
+        speechText.addMouseListener(listener);
     }
 
     public void updateLayout(int groupW, int groupH, int h) {
-        if (groupW <= 0 || groupH <= 0) return;
+        if (groupW <= 0 || groupH <= 0 || getWidth() <= 0) return;
+        
+        this.lastW = groupW;
+        this.lastH = groupH;
 
         int x = (getWidth() - groupW) / 2;
-        int y = getHeight() - groupH - 45; 
+        int y = getHeight() - groupH - 40; 
         
         mainBox.setBounds(x, y, groupW, groupH);
         
         if (nameLabel.isVisible()) {
-            nameLabel.setBounds(45, 20, 400, 35);
-            speechText.setBounds(45, 60, groupW - 90, groupH - 85);
+            nameLabel.setBounds(40, 20, groupW - 80, 40);
+            speechText.setBounds(40, 65, groupW - 100, groupH - 85);
         } else {
-            speechText.setBounds(45, 40, groupW - 90, groupH - 80);
+            speechText.setBounds(40, 35, groupW - 100, groupH - 75);
         }
         
-        nextButton.setBounds(groupW - 65, groupH - 60, 40, 40);
+        nextButton.setBounds(groupW - 60, groupH - 60, 35, 35);
         
-        revalidate();
-        repaint();
+        mainBox.revalidate();
+        mainBox.repaint();
     }
 
     public void setText(String name, String text) {
         speechText.setText(text);
         
-        if (name != null && !name.isEmpty() && !name.equals("narrator")) {
-            nameLabel.setText(name.toUpperCase());
+        // ✨ ตรวจสอบชื่อ และบังคับวาดใหม่
+        if (name != null && !name.trim().isEmpty() && 
+            !name.equalsIgnoreCase("narrator") && 
+            !name.equalsIgnoreCase("none")) {
+            
+            nameLabel.setText(name.trim().toUpperCase());
             nameLabel.setVisible(true);
+            
+            // ✨ บังคับเลเยอร์ให้มาอยู่ข้างหน้าสุดทุกครั้งที่เซ็ตชื่อ
+            mainBox.setComponentZOrder(nameLabel, 0); 
         } else {
             nameLabel.setVisible(false);
+            nameLabel.setText("");
         }
         
-        updateLayout(mainBox.getWidth(), mainBox.getHeight(), getHeight());
+        if (lastW > 0) {
+            updateLayout(lastW, lastH, getHeight());
+        } else {
+            updateLayout((int)(getWidth() * 0.85), (int)(getHeight() * 0.25), getHeight());
+        }
+        
+        // สั่งวาดใหม่ทั้งกล่อง
+        repaint();
     }
 }

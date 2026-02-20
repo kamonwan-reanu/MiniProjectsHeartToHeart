@@ -2,22 +2,29 @@ package model;
 import java.awt.Color;
 
 public class GameConstants {
+    // 🖥️ กำหนดขนาดหน้าจอมาตรฐาน
     public static final int SCREEN_WIDTH = 1920;
     public static final int SCREEN_HEIGHT = 1080;
-    public static final int TYPEWRITER_SPEED = 50; 
+    
+    // ⌨️ ความเร็วตัวอักษร
+    public static final int TYPEWRITER_SPEED = 80; 
 
-    // ✅ Path สำหรับรูปภาพ (ของเดิมที่หนูมี)
-    public static final String CHAR_PATH = "model/img_character/"; 
-    public static final String SCENE_PATH = "model/img_scene/";
+    // 📁 ระบบ Path 
+    public static final String BASE_PATH = "model/"; 
+    
+    public static final String CHAR_PATH = BASE_PATH + "img_character/"; 
+    public static final String SCENE_PATH = BASE_PATH + "img_scene/";
+    public static final String SOUND_PATH = BASE_PATH + "sound_effect/";
 
-    // ✅ เพิ่ม Path สำหรับเสียง (Sound)
-    // อวี่เชินแนะนำให้เก็บไว้ในโฟลเดอร์ model/sounds/ นะคะ
-    // ใน GameConstants.java
-    public static final String SOUND_PATH = "model/sound_effect/"; // ✅ ต้องชื่อนี้ตาม Explorer ของหนู
+    // 🎭 ไฟล์พื้นฐาน
+    public static final String CHAR_AHRI = CHAR_PATH + "ahri.png"; 
 
-    // ✅ ตัวอย่างการประกาศตัวแปรดึงไฟล์ (Optional: เผื่อหนูอยากเรียกใช้ตรงๆ)
-    public static final String CHAR_AHRI = CHAR_PATH + "ahri.jpg"; 
-    public static final String BG_SCHOOL = SCENE_PATH + "scene1.jpg"; 
-
+    // 🎨 สี
     public static final Color THEME_PINK = new Color(255, 105, 180);
+    public static final Color DIALOGUE_BG = new Color(0, 0, 0, 180); 
+    public static final Color TEXT_WHITE = Color.WHITE;
+
+    // ✨ ตัวแปรเก็บชื่อผู้เล่น (ตั้งเป็นค่าว่าง เพื่อให้ผู้เล่นกรอกเอง)
+    // ใช้ static (ไม่มี final) เพื่อให้สามารถเปลี่ยนค่าได้เมื่อผู้เล่นพิมพ์ชื่อเข้ามาค่ะ
+    public static String PLAYER_NAME = ""; 
 }
