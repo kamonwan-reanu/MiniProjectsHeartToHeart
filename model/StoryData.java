@@ -61,5 +61,4 @@ public class StoryData {
         {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.png", "scene1.jpg", "none", "FADE_WHITE"}
     };
 
-    
 }

@@ -44,7 +44,6 @@ public class DialogueBox extends JPanel {
         mainBox.setOpaque(false);
 
         nameLabel = new JLabel("");
-        // ✨ กลับมาใช้สีฟ้าตัวเดิมที่ Ahri ชอบค่ะ
         nameLabel.setForeground(new Color(100, 210, 255)); 
         nameLabel.setFont(new Font("Tahoma", Font.BOLD, 24));
         nameLabel.setHorizontalAlignment(SwingConstants.LEFT);
@@ -77,7 +76,6 @@ public class DialogueBox extends JPanel {
         mainBox.add(nextButton);
         add(mainBox);
 
-        // ✨ บังคับลำดับการวาด ให้ป้ายชื่ออยู่บนสุด (Z-Order 0)
         mainBox.setComponentZOrder(nameLabel, 0);
     }
 
@@ -93,7 +91,20 @@ public class DialogueBox extends JPanel {
         speechText.addMouseListener(listener);
     }
 
-    // ✅ เมธอดสำหรับจัดตำแหน่งปกติ (อยู่ด้านล่าง)
+    // ✅ เมธอดจัดระเบียบฟอนต์และปุ่มด้านใน
+    private void updateInsideLayout(int width, int height) {
+        if (nameLabel != null && speechText != null && nextButton != null) {
+            if (nameLabel.isVisible()) {
+                nameLabel.setBounds(45, 20, width - 90, 35);
+                speechText.setBounds(45, 60, width - 90, height - 85);
+            } else {
+                speechText.setBounds(45, 40, width - 90, height - 80);
+            }
+            nextButton.setBounds(width - 65, height - 60, 40, 40);
+        }
+    }
+
+    // ✅ เมธอดสำหรับอยู่ด้านล่างจอ (โหมดปกติ)
     public void updateLayout(int groupW, int groupH, int h) {
         if (groupW <= 0 || groupH <= 0 || getWidth() <= 0) return;
         
@@ -103,73 +114,56 @@ public class DialogueBox extends JPanel {
         int x = (getWidth() - groupW) / 2;
         int y = getHeight() - groupH - 40; 
         
+        this.setBounds(0, 0, getParent().getWidth(), h);
         mainBox.setBounds(x, y, groupW, groupH);
         
-        if (nameLabel.isVisible()) {
-            nameLabel.setBounds(40, 20, groupW - 80, 40);
-            speechText.setBounds(40, 65, groupW - 100, groupH - 85);
-        } else {
-            speechText.setBounds(40, 35, groupW - 100, groupH - 75);
-        }
-        
-        nextButton.setBounds(groupW - 60, groupH - 60, 35, 35);
+        updateInsideLayout(groupW, groupH);
         
         mainBox.revalidate();
         mainBox.repaint();
     }
 
-    // ✅ เมธอดสำหรับ "วาร์ป" ไปตำแหน่งที่ต้องการ (เช่น ตอนมีตัวเลือก)
-    public void moveTo(int x, int y, int width, int height) {
-        // x, y ที่ส่งมาคือตำแหน่งของตัวกล่อง mainBox
-        int parentW = getParent().getWidth();
-        int parentH = getParent().getHeight();
+    // ✅ เมธอดสำหรับลอยขึ้นบนจอ (โหมดมีตัวเลือก) แก้ไขจุดที่ Conflict ให้สมบูรณ์
+    public void moveTo(int groupW, int groupH, int targetY) {
+        if (groupW <= 0 || groupH <= 0 || getWidth() <= 0) return;
         
-        this.setBounds(0, 0, parentW, parentH); // ตัวแม่ยังคงเต็มจอ
-        mainBox.setBounds(x, y, width, height); // ตัวกล่องขยับไปตามพิกัดที่สั่ง
+        this.lastW = groupW;
+        this.lastH = groupH;
+
+        int x = (getParent().getWidth() - groupW) / 2;
         
-        updateInsideLayout(width, height); 
+        this.setBounds(0, 0, getParent().getWidth(), getParent().getHeight());
+        
+        if (mainBox != null) {
+            mainBox.setBounds(x, targetY, groupW, groupH);
+        }
+        
+        updateInsideLayout(groupW, groupH);
+        
         revalidate();
         repaint();
     }
 
-    // ✅ เมธอดรวมศูนย์สำหรับจัดวางองค์ประกอบภายในกล่อง
-    private void updateInsideLayout(int width, int height) {
-        if (nameLabel != null && speechText != null && nextButton != null) {
-            if (nameLabel.isVisible()) {
-                nameLabel.setBounds(45, 20, 400, 35);
-                speechText.setBounds(45, 60, width - 90, height - 85);
-            } else {
-                speechText.setBounds(45, 40, width - 90, height - 80);
-            }
-            nextButton.setBounds(width - 65, height - 60, 40, 40);
-        }
-    }
-
+    // ✅ เมธอดเซ็ตข้อความ
     public void setText(String name, String text) {
         speechText.setText(text);
         
-        // ✨ ตรวจสอบชื่อ และบังคับวาดใหม่
         if (name != null && !name.trim().isEmpty() && 
             !name.equalsIgnoreCase("narrator") && 
             !name.equalsIgnoreCase("none")) {
             
             nameLabel.setText(name.trim().toUpperCase());
             nameLabel.setVisible(true);
-            
-            // ✨ บังคับเลเยอร์ให้มาอยู่ข้างหน้าสุดทุกครั้งที่เซ็ตชื่อ
             mainBox.setComponentZOrder(nameLabel, 0); 
         } else {
             nameLabel.setVisible(false);
             nameLabel.setText("");
         }
         
-        if (lastW > 0) {
-            updateLayout(lastW, lastH, getHeight());
-        } else {
-            updateLayout((int)(getWidth() * 0.85), (int)(getHeight() * 0.25), getHeight());
+        if (lastW > 0 && lastH > 0) {
+            updateInsideLayout(lastW, lastH);
         }
         
-        // สั่งวาดใหม่ทั้งกล่อง
         repaint();
     }
 }
