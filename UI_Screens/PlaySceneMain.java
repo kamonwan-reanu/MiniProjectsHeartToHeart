@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.Map;
 import UI_Components.DialogueBox;
 import UI_Components.CharacterSprite;
-import UI_Components.ChoiceOverlay;
 import UI_Components.EffectManager;
 import model.GameConstants;
 import model.SoundManager;
