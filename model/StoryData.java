@@ -1,15 +1,17 @@
 package model;
 
 public class StoryData {
+    // ในไฟล์ model/StoryData.java
     public static final Object[][] SCENE_1 = {
-        {"", "ความรักมีหลายรสชาติ", "", ""},
-        {"", "บางครั้งหวานละมุน จนหัวใจพองฟูเหมือนขนมสายไหมที่ละลายช้า ๆ บนปลายลิ้น", "", ""},
-        {"", "บางครั้งขมจัด ราวกับน้ำชาที่ลืมเติมนมและน้ำตาล กลืนลงไปแล้วเหลือเพียงรสฝาดในอก", "", ""},
-        {"", "ในโลกใบนี้มีเรื่องราวความรักมากมาย", "", ""},
-        {"", "และเรื่องของฉัน กำลังจะกลายเป็นหนึ่งในนั้น", "", ""},
+        {"", "ความรักมีหลายรสชาติ", "none", "black.jpg", "none", "none"}, // เติมชื่อรูปพื้นหลัง
+        {"", "บางครั้งหวานละมุน...", "none", "black.jpg", "none", "none"}, 
+        {"", "บางครั้งขมขื่น...", "none", "black.jpg", "none", "none"},
+        {"", "ในโลกใบนี้มีความรัก...", "none", "black.jpg", "none", "none"},
+        {"", "และเรื่องของฉัน...", "none", "whiteroom.png", "none", "FADE_WHITE_OPEN"} // ใส่เอฟเฟกต์บรรทัดสุดท้าย
     };
 
    public static final Object[][] SCENE_2 = {
+        {"", "..........", "Teeraphat.png", "whiteroom.png", "none", "white_fade_out"},
         {"", "เจ็ดปี...", "Teeraphat.png", "whiteroom.png"},
         {"", "ไม่ใช่ตัวเลขเล็ก ๆ มันยาวพอให้ฉันจำได้ว่าเขาชอบกาแฟแบบไหน", "", "whiteroom.png"},
         {"", "ยาวพอให้คุ้นเคยกับจังหวะลมหายใจของกันและกัน", "", "whiteroom.png"},
@@ -47,15 +49,16 @@ public class StoryData {
         {"", "หนึ่ง — คนจากอดีตที่กลับมาโดยไม่คาดคิด", "", "cream.jpg"},
 
     };
-    
+
+    // ตัวอย่างการเพิ่มข้อมูลใน StoryData.java
     public static final Object[][] SCENE_3 = {
-        {"PLAYER", "สวัสดี ฉันชื่อ นะ", "ahri.png", "scene1.jpg"},
-        {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.png", "scene1.jpg"}
+        {"PLAYER", "สวัสดี ฉันชื่อ [PLAYER] นะ", "ahri.png", "scene1.jpg", "none", "FADE_WHITE_OPEN"}, // <--- เพิ่มตรงนี้!
+        {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.png", "scene1.jpg", "none", "FADE_WHITE_CLOSED"}
     };
 
     public static final Object[][] SCENE_4 = {
-        {"PLAYER", "ยินดีที่ได้รู้จักนะ...............", "char/ahri_happy.png", "img_scene/scene1.jpg"},
-        {"PLAYER", "ยินดีที่ได้รู้จักนะ...............", "char/ahri_smile.png", "img_scene/old_building.jpg"}
+        {"PLAYER", "สวัสดี ฉันชื่อ [PLAYER] นะ", "ahri.png", "scene1.jpg", "none", "SHAKE"}, // <--- เพิ่มตรงนี้!
+        {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.png", "scene1.jpg", "none", "FADE_WHITE"}
     };
 
     

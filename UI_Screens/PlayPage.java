@@ -7,6 +7,7 @@ import java.awt.event.*;
 import core.Main; 
 import model.StoryData;
 import model.GameConstants;
+import UI_Components.EffectManager;
 
 public class PlayPage extends JPanel {
     private int storyIndex = 0;
@@ -17,10 +18,15 @@ public class PlayPage extends JPanel {
     private JTextPane textPane; 
     private Timer typeTimer;
     private Timer fadeTimer;
+    private EffectManager effectManager;
 
     public PlayPage(Font tFont) {
         setLayout(new GridBagLayout());
         setBackground(Color.BLACK); 
+        
+        // ✨ แก้ไขจุดที่ 1: ส่ง null แทน DialogueBox เพราะหน้านี้ใช้ JTextPane
+        // การส่ง null จะทำให้โค้ดไม่แดง และ EffectManager จะข้ามการสั่งซ่อนกล่องข้อความไปเอง
+        this.effectManager = new EffectManager(this, null);
 
         textPane = new JTextPane() {
             @Override
@@ -43,10 +49,8 @@ public class PlayPage extends JPanel {
         this.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentShown(ComponentEvent e) {
-                // 🛠️ แก้ปัญหาจอดำสนิท: เมื่อหน้านี้ปรากฏ ต้องสั่งเปิดม่าน GlassPane ของ Main ออก
                 Main.brightnessAlpha = 0.0f;
                 Main.repaintBrightness();
-                
                 updateTextLayout();
                 resetAndStart();
             }
@@ -66,14 +70,36 @@ public class PlayPage extends JPanel {
         add(textPane);
     }
 
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2d = (Graphics2D) g.create();
+        if (effectManager != null) {
+            effectManager.drawEffects(g2d, getWidth(), getHeight());
+        }
+        g2d.dispose();
+    }
+
     private void resetAndStart() {
         storyIndex = 0;
         textAlpha = 1.0f;
         textPane.setText("");
+        if (effectManager != null) effectManager.stopAll();
         
         if (StoryData.SCENE_1 != null && StoryData.SCENE_1.length > 0) {
-            String initialText = (String) StoryData.SCENE_1[storyIndex][1]; 
-            startTypewriter(initialText);
+            startTypewriter((String) StoryData.SCENE_1[storyIndex][1]);
+        }
+    }
+
+    private void checkAndPlayEffect() {
+        if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
+            Object[] lineData = StoryData.SCENE_1[storyIndex];
+            if (lineData.length >= 6) {
+                String effectName = (String) lineData[5];
+                if (effectName != null && !effectName.equalsIgnoreCase("none") && !effectName.isEmpty()) {
+                    effectManager.play(effectName);
+                }
+            }
         }
     }
 
@@ -91,17 +117,32 @@ public class PlayPage extends JPanel {
                 centerText(); 
             } else {
                 typeTimer.stop();
+                checkAndPlayEffect();
             }
         });
         typeTimer.start();
     }
 
     private void handlePageClick() {
+        boolean hasEffect = false;
+        if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
+            Object[] lineData = StoryData.SCENE_1[storyIndex];
+            if (lineData.length >= 6) {
+                String effectName = (String) lineData[5];
+                hasEffect = (effectName != null && !effectName.equalsIgnoreCase("none") && !effectName.isEmpty());
+            }
+        }
+
         if (typeTimer != null && typeTimer.isRunning()) {
-            typeTimer.stop();
-            textPane.setText(fullText); 
-            charIndex = fullText.length();
-            centerText(); 
+            if (hasEffect) {
+                return; 
+            } else {
+                typeTimer.stop();
+                textPane.setText(fullText); 
+                charIndex = fullText.length();
+                centerText(); 
+                checkAndPlayEffect();
+            }
         } else if (fadeTimer == null || !fadeTimer.isRunning()) {
             startFadeOutNext();
         }
@@ -126,7 +167,7 @@ public class PlayPage extends JPanel {
     private void startFadeOutNext() {
         if (fadeTimer != null) fadeTimer.stop();
         fadeTimer = new Timer(30, e -> {
-            textAlpha -= 0.15f; 
+            textAlpha -= 0.10f; 
             if (textAlpha <= 0.0f) {
                 textAlpha = 0.0f;
                 fadeTimer.stop();
@@ -142,13 +183,13 @@ public class PlayPage extends JPanel {
         if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
             startTypewriter((String) StoryData.SCENE_1[storyIndex][1]);
         } else {
-            // 🛠️ แก้ปัญหาไม่ไป SCENE_1: 
-            // 1. เปิดม่านดำออกก่อนเปลี่ยนหน้า
-            Main.brightnessAlpha = 0.0f;
-            Main.repaintBrightness();
-            
-            // 2. สั่งเปลี่ยนหน้า
             if (Main.cardLayout != null) {
+                for (Component comp : Main.mainContainer.getComponents()) {
+                    if (comp instanceof PlaySceneMain) {
+                        ((PlaySceneMain) comp).loadNewScene(StoryData.SCENE_2, "SCENE_2");
+                        break;
+                    }
+                }
                 Main.cardLayout.show(Main.mainContainer, "PLAY_SCENE"); 
             }
         }
