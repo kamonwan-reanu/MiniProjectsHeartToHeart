@@ -60,6 +60,16 @@ public class StoryData {
         {"PLAYER", "สวัสดี ฉันชื่อ [PLAYER] นะ", "ahri.png", "scene1.jpg", "none", "SHAKE"}, // <--- เพิ่มตรงนี้!
         {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.png", "scene1.jpg", "none", "FADE_WHITE"}
     };
-
     
+    public static final Object[][] SCENE_5 = {
+    // 0:ชื่อ, 1:บทพูด, 2:รูปตัวละคร, 3:ฉากหลัง, 4:เสียง(เพื่อน), 5:เอฟเฟกต์(เพื่อน), 6:ตัวเลือก(เรา)
+    { "PLAYER", "คุณคิดว่ายังไงล่ะ?", "ahri.png", "cafe.png", "BGM_Sad", "shake", 
+        new Object[][] {
+            { "น่าสนใจมาก", "SCENE_3" },
+            { "ง่วงนอนจังเลย...", "SCENE_4" },
+            { "เริ่มเรื่องใหม่กันเถอะ", "SCENE_1" }
+        }
+    }
+
+};
 }
