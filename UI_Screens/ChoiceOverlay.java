@@ -3,6 +3,7 @@ package UI_Screens;
 import javax.swing.*;
 import java.awt.*;
 import java.util.function.Consumer;
+import model.Relation;
 
 public class ChoiceOverlay extends JPanel {
 
@@ -16,6 +17,7 @@ public class ChoiceOverlay extends JPanel {
 
         for (int i = 0; i < choices.length; i++) {
             final int index = i;
+            final int choiceIndex = i; // สำหรับใช้ใน ActionListener
             String btnText = (String) choices[i][0];
             String targetScene = (String) choices[i][1];
 
@@ -23,6 +25,7 @@ public class ChoiceOverlay extends JPanel {
             gbc.insets = new Insets(10, 0, 10, 0); // ระยะห่างบนล่าง 10px
 
             JButton btn = new JButton() {
+                // 1. Dynamic Size: กว้าง 60% ของจอ สูง 60px เสมอ
                 // ✅ 1. Dynamic Size: กว้าง 60% ของจอ สูง 60px เสมอ
                 @Override
                 public Dimension getPreferredSize() {
@@ -61,8 +64,26 @@ public class ChoiceOverlay extends JPanel {
             btn.setBorderPainted(false);
             btn.setFocusable(false);
 
-            // ✅ 3. เมื่อปุ่มถูกกด ส่งชื่อฉากกลับไปให้ PlaySceneMain
+            // 3. เมื่อปุ่มถูกกด ตรวจสอบและบวกค่าความสัมพันธ์ก่อนส่งชื่อฉากกลับไป
             btn.addActionListener(e -> {
+                try {
+                    // ตรวจสอบรูปแบบ Array ใหม่: {"ข้อความปุ่ม", "ฉากเป้าหมาย", "ชื่อตัวละคร", ตัวเลขคะแนน}
+                    if (choices[choiceIndex].length >= 4) {
+                        String characterName = (String) choices[choiceIndex][2];
+                        int affectionPoints = (Integer) choices[choiceIndex][3];
+                        
+                        // บวกค่าความสัมพันธ์
+                        Relation.getInstance().addAffection(characterName, affectionPoints);
+                    }
+                    // ถ้ามีแค่ 2 ค่า (รูปแบบเก่า) จะข้ามการบวกคะแนน
+                    
+                } catch (Exception ex) {
+                    // ดัก Error กรณีข้อมูลไม่ถูกต้อง (เช่น type mismatch, index out of bounds)
+                    System.err.println("เกิดข้อผิดพลาดในการประมวลผลความสัมพันธ์: " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+                
+                // ส่งชื่อฉากกลับไปให้ PlaySceneMain (เหมือนเดิม)
                 if (onChoiceSelected != null) {
                     onChoiceSelected.accept(targetScene);
                 }
@@ -72,6 +93,7 @@ public class ChoiceOverlay extends JPanel {
         }
     }
 
+    // 4. อัปเดตตำแหน่งเวลาย่อ/ขยายจอ (อยู่ใต้กล่องข้อความ 20px)
     // ✅ 4. อัปเดตตำแหน่งเวลาย่อ/ขยายจอ (อยู่ใต้กล่องข้อความ 20px)
     public void updateBounds(int w, int h, int targetY, int groupH) {
         int overlayY = targetY + groupH + 20; 

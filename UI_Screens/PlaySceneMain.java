@@ -85,6 +85,7 @@ public class PlaySceneMain extends JPanel {
         storyMap.put("SCENE_3", StoryData.SCENE_3);
         storyMap.put("SCENE_4", StoryData.SCENE_4);
         storyMap.put("SCENE_5", StoryData.SCENE_5);
+        storyMap.put("SCENE_6", StoryData.SCENE_6);
     }
 
     private void setupUIComponents() {
