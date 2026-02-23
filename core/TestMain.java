@@ -8,30 +8,32 @@ import java.awt.*;
 
 public class TestMain {
     public static void main(String[] args) {
+        GameConstants.PLAYER_NAME = "Ahri"; 
+
         SwingUtilities.invokeLater(() -> {
-            JFrame frame = new JFrame("Testing PlaySceneMain");
+            JFrame frame = new JFrame("Scene Testing Tool - Ahri");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            
-            // ✅ ใช้ขนาด 800x600 มาตรฐาน
             frame.setSize(800, 600);
             frame.setLayout(new BorderLayout());
 
-            // ✅ แก้ไขตรงนี้: ลบวงเล็บปิดที่เกินมา และลบ "PLAY_SCENE" ออก
-            // เพราะในไฟล์ทดสอบนี้เราแอดลง BorderLayout โดยตรง ไม่ได้ใช้ CardLayout ค่ะ
-            // ใน TestMain.java
+            // เลือกซีนที่ต้องการทดสอบตรงนี้ (เช่น SCENE_5)
             PlaySceneMain testScene = new PlaySceneMain(
-                StoryData.SCENE_3,      // ✅ เริ่มที่ฉาก 2
-                null,                   // ✅ ไม่ต้องระบุชื่อตัวละครในฉากนี้
-                "SCENE_3"               // ✅ ระบุชื่อว่าเป็นฉาก 
+                StoryData.SCENE_5, 
+                null, 
+                "SCENE_5"
             );
 
             frame.add(testScene, BorderLayout.CENTER);
-
-            // ✅ เรียกคำสั่งจัด Layout ให้แสดงผลถูกต้อง
-            testScene.revalidate();
-            
             frame.setLocationRelativeTo(null);
             frame.setVisible(true);
+
+            // บังคับกระตุ้นระบบหลังจาก Frame โชว์แล้ว
+            SwingUtilities.invokeLater(() -> {
+                testScene.loadNewScene(StoryData.SCENE_5, "SCENE_5");
+                testScene.revalidate();
+                testScene.repaint();
+                testScene.requestFocusInWindow();
+            });
         });
     }
 }

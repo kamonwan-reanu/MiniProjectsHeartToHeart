@@ -24,7 +24,7 @@ public class Main {
             try {
                 mainFrame = new JFrame("HeartToHeart");
                 mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-                mainFrame.setResizable(true); 
+                mainFrame.setResizable(false); 
 
                 setupScreens(); 
                 
