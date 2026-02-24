@@ -82,18 +82,18 @@ public class StoryData {
 
     // ตัวอย่างการเพิ่มข้อมูลใน StoryData.java
     public static final Object[][] SCENE_3 = {
-        {"PLAYER", "สวัสดี ฉันชื่อ [PLAYER] นะ", "ahri.png", "scene1.jpg", "none", ""}, // <--- เพิ่มตรงนี้!
-        {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.png", "scene1.jpg", "none", ""}
+        {"PLAYER", "สวัสดี ฉันชื่อ [PLAYER] นะ", "ahri.jpg", "scene1.jpg", "none", ""}, // <--- เพิ่มตรงนี้!
+        {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.jpg", "scene1.jpg", "none", ""}
     };
 
     public static final Object[][] SCENE_4 = {
-        {"PLAYER", "สวัสดี ฉันชื่อ [PLAYER] นะ", "ahri.png", "scene1.jpg", "none", ""}, // <--- เพิ่มตรงนี้!
-        {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.png", "scene1.jpg", "none", ""}
+        {"PLAYER", "สวัสดี ฉันชื่อ [PLAYER] นะ", "ahri.jpg", "scene1.jpg", "none", ""}, // <--- เพิ่มตรงนี้!
+        {"PLAYER", "ยินดีที่ได้รู้จักนะ", "ahri.jpg", "scene1.jpg", "none", ""}
     };
 
     public static final Object[][] SCENE_5 = {
     // 0:ชื่อ, 1:บทพูด, 2:รูปตัวละคร, 3:ฉากหลัง, 4:เสียง(เพื่อน), 5:เอฟเฟกต์(เพื่อน), 6:ตัวเลือก(เรา)
-    { "PLAYER", "คุณคิดว่ายังไงล่ะ?", "ahri.png", "cafe.png", "BGM_Sad", "shake", 
+    { "PLAYER", "คุณคิดว่ายังไงล่ะ?", "ahri.jpg", "cafe.png", "BGM_Sad", "shake", 
         new Object[][] {
             // โครงสร้างใหม่: {"ข้อความ", "ฉากเป้าหมาย", "ชื่อตัวละครที่จะบวก", จำนวนคะแนน}
             { "1. ลูบหัวเบาๆ", "SCENE_4", "Ahri", 10 },

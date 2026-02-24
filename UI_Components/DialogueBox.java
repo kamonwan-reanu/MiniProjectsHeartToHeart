@@ -148,24 +148,50 @@ public class DialogueBox extends JPanel {
     }
 
     public void updateLayout(int groupW, int groupH, int parentH) {
-        if (getParent() == null) return;
-        this.lastW = groupW; this.lastH = groupH;
-        this.setBounds(0, 0, getParent().getWidth(), parentH);
-        int x = (getParent().getWidth() - groupW) / 2;
-        int y = parentH - groupH - 30; 
-        mainBox.setBounds(x, y, groupW, groupH);
-        updateInsideLayout(groupW, groupH);
-    }
+    if (getParent() == null) return;
+    this.lastW = groupW; this.lastH = groupH;
+    this.setBounds(0, 0, getParent().getWidth(), parentH);
+    int x = (getParent().getWidth() - groupW) / 2;
+    int y = parentH - groupH - 30; 
+    mainBox.setBounds(x, y, groupW, groupH);
+    updateInsideLayout(groupW, groupH);
+
+}
 
     public void moveTo(int groupW, int groupH, int targetY) {
-        if (getParent() == null) return;
-        this.lastW = groupW; this.lastH = groupH;
-        this.setBounds(0, 0, getParent().getWidth(), getParent().getHeight());
-        int x = (getParent().getWidth() - groupW) / 2;
-        mainBox.setBounds(x, targetY, groupW, groupH);
-        updateInsideLayout(groupW, groupH);
-        revalidate(); repaint();
+    if (getParent() == null) return;
+    this.lastW = groupW; this.lastH = groupH;
+    this.setBounds(0, 0, getParent().getWidth(), getParent().getHeight());
+    int x = (getParent().getWidth() - groupW) / 2;
+    mainBox.setBounds(x, targetY, groupW, groupH);
+    updateInsideLayout(groupW, groupH);
+
+    // ✨ แผนแทรกซึม (ย้ายมาไว้ใน moveTo เพราะ PlaySceneMain เรียกใช้ตัวนี้ตลอดเวลา)
+    Container parent = getParent(); 
+    UI_Components.RelationUI relUI = UI_Components.RelationUI.getInstance();
+    
+    boolean isPresent = false;
+    for (Component c : parent.getComponents()) {
+        if (c instanceof UI_Components.RelationUI) { 
+            isPresent = true; 
+            break; 
+        }
     }
+    
+    if (!isPresent) {
+        parent.add(relUI);
+        // ดันมาหน้าสุด (Index 0) เพื่อให้ทับเลเยอร์ Effect ของเพื่อน
+        parent.setComponentZOrder(relUI, 0); 
+    }
+    
+    // บังคับให้หลอดอัปเดตตำแหน่งตามขนาดจอ
+    relUI.updateBounds(parent.getWidth(), parent.getHeight());
+    relUI.setVisible(true);
+
+    revalidate(); 
+    repaint();
+    parent.repaint(); // สั่งให้ PlaySceneMain (หน้าจอเพื่อน) วาดหลอดออกมา
+}
 
     public void setText(String name, String text) {
         speechText.setText(text);

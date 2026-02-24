@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.function.Consumer;
 import model.Relation;
+import UI_Components.RelationUI;
 
 public class ChoiceOverlay extends JPanel {
 
@@ -74,6 +75,9 @@ public class ChoiceOverlay extends JPanel {
                         
                         // บวกค่าความสัมพันธ์
                         Relation.getInstance().addAffection(characterName, affectionPoints);
+                        
+                        // อัปเดตหลอดความสัมพันธ์ทันทีที่กด
+                        RelationUI.getInstance().updateScore(characterName);
                     }
                     // ถ้ามีแค่ 2 ค่า (รูปแบบเก่า) จะข้ามการบวกคะแนน
                     
@@ -94,11 +98,32 @@ public class ChoiceOverlay extends JPanel {
     }
 
     // 4. อัปเดตตำแหน่งเวลาย่อ/ขยายจอ (อยู่ใต้กล่องข้อความ 20px)
-    // ✅ 4. อัปเดตตำแหน่งเวลาย่อ/ขยายจอ (อยู่ใต้กล่องข้อความ 20px)
     public void updateBounds(int w, int h, int targetY, int groupH) {
-        int overlayY = targetY + groupH + 20; 
-        this.setBounds(0, overlayY, w, h - overlayY);
-        this.revalidate();
-        this.repaint();
+    int overlayY = targetY + groupH + 20; 
+    this.setBounds(0, overlayY, w, h - overlayY);
+
+    // ✨ แผนแทรกซึม: แอดหลอด RelationUI เข้าไปที่หน้าจอหลักของเพื่อน (PlaySceneMain)
+    Container parent = getParent();
+    if (parent != null) {
+        RelationUI relUI = RelationUI.getInstance();
+        
+        // ตรวจสอบว่าเคยแอดไปหรือยัง
+        boolean isPresent = false;
+        for (Component c : parent.getComponents()) {
+            if (c instanceof RelationUI) { isPresent = true; break; }
+        }
+
+        if (!isPresent) {
+            parent.add(relUI); // แอดเข้าไปในหน้าจอเพื่อน
+            parent.setComponentZOrder(relUI, 0); // ดันมาเลเยอร์หน้าสุด (ทับรูปตัวละคร)
+        }
+
+        relUI.updateBounds(w, h); // จัดตำแหน่งขวาบน
+        parent.validate();
+        parent.repaint();
     }
+    this.revalidate();
+    this.repaint();
+}
+    
 }
