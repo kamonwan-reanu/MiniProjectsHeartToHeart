@@ -77,15 +77,19 @@ public class MainMenu extends JPanel {
         startMenuMusic();
     }
 
-    // 🌸 ฟังก์ชันแสดงหน้ากรอกชื่อแบบ UI ในเกม
+    // 🌸 ฟังก์ชันแสดงหน้ากรอกชื่อแบบ UI ในเกม (เวอร์ชันล็อคปุ่มข้างหลัง)
     private void showRegisterUI() {
-        if (registerOverlay != null) return; 
+        model.GameConstants.PLAYER_NAME = ""; 
+
+        if (registerOverlay != null) {
+            layeredPane.remove(registerOverlay);
+            registerOverlay = null;
+        }
 
         registerOverlay = new JPanel(null);
         registerOverlay.setOpaque(false);
         registerOverlay.setBounds(0, 0, getWidth(), getHeight());
 
-        // พื้นหลังมืดจางๆ ให้หน้าเมนูดูดรอปลง
         JPanel dimmer = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -94,8 +98,14 @@ public class MainMenu extends JPanel {
             }
         };
         dimmer.setBounds(0, 0, getWidth(), getHeight());
+
+        MouseAdapter lockMouse = new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) { e.consume(); }
+            @Override public void mousePressed(MouseEvent e) { e.consume(); }
+            @Override public void mouseReleased(MouseEvent e) { e.consume(); }
+        };
+        dimmer.addMouseListener(lockMouse);
         
-        // 🎨 กล่องลงทะเบียนสีชมพูขาว
         JPanel box = new JPanel(null) {
             @Override
             protected void paintComponent(Graphics g) {
@@ -110,12 +120,21 @@ public class MainMenu extends JPanel {
             }
         };
         box.setBounds((getWidth()-500)/2, (getHeight()-300)/2, 500, 300);
+        box.addMouseListener(lockMouse);
 
         JLabel title = new JLabel("กรุณาระบุชื่อของคุณ");
         title.setFont(new Font("Tahoma", Font.BOLD, 24));
         title.setForeground(new Color(255, 105, 180));
-        title.setBounds(0, 40, 500, 40);
+        title.setBounds(0, 30, 500, 40); // ขยับขึ้นนิดนึง
         title.setHorizontalAlignment(SwingConstants.CENTER);
+
+        // ✨ [เพิ่ม] ข้อความแจ้งเตือน (ซ่อนไว้ก่อน)
+        JLabel warningLabel = new JLabel("! กรุณาใส่ชื่อตัวละครก่อนเริ่มต้นการเดินทาง !");
+        warningLabel.setFont(new Font("Tahoma", Font.BOLD, 14));
+        warningLabel.setForeground(Color.RED);
+        warningLabel.setBounds(0, 75, 500, 25);
+        warningLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        warningLabel.setVisible(false); // ปิดไว้ก่อน
 
         JTextField inputField = new JTextField();
         inputField.setFont(new Font("Tahoma", Font.PLAIN, 22));
@@ -132,11 +151,25 @@ public class MainMenu extends JPanel {
 
         confirmBtn.addActionListener(e -> {
             String name = inputField.getText().trim();
-            GameConstants.PLAYER_NAME = name.isEmpty() ? "นักเดินทาง" : name;
+            if (name.isEmpty()) {
+                // ✨ แสดงการแจ้งเตือนเมื่อไม่ได้ใส่ชื่อ
+                warningLabel.setVisible(true);
+                inputField.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Color.RED));
+                // เขย่ากล่องนิดๆ (Repaint)
+                box.repaint();
+                return; 
+            }
+            
+            GameConstants.PLAYER_NAME = name;
+            
+            layeredPane.remove(registerOverlay);
+            registerOverlay = null; 
+            
             startFadeOutAction();
         });
 
         box.add(title);
+        box.add(warningLabel); // ✨ เพิ่มเข้าไปในกล่อง
         box.add(inputField);
         box.add(confirmBtn);
         
@@ -150,7 +183,16 @@ public class MainMenu extends JPanel {
     }
 
     private void startFadeOutAction() {
+        // ✨ [จุดที่แก้] ถ้าหน้าจอลงทะเบียนยังค้างอยู่ ให้เอาออกทันทีที่เริ่ม Fade
+        if (registerOverlay != null) {
+            layeredPane.remove(registerOverlay);
+            registerOverlay = null;
+            layeredPane.revalidate();
+            layeredPane.repaint();
+        }
+
         stopMenuMusic();
+        
         Timer fadeOutTimer = new Timer(20, new ActionListener() {
             float alpha = 0.0f;
             @Override
@@ -158,10 +200,15 @@ public class MainMenu extends JPanel {
                 alpha += 0.05f;
                 if (alpha >= 1.0f) {
                     ((Timer)e.getSource()).stop();
-                    Main.cardLayout.show(Main.mainContainer, "PLAY_PAGE"); 
-                    Main.brightnessAlpha = 0.0f;
+                    
+                    // ✨ [จุดที่แก้] รีเซ็ตค่าความสว่างให้เป็นปกติก่อนเปลี่ยนหน้า
+                    Main.brightnessAlpha = 0.0f; 
                     Main.repaintBrightness();
+                    
+                    // เปลี่ยนหน้าไปยังฉากเล่นเกม
+                    Main.cardLayout.show(Main.mainContainer, "PLAY_PAGE"); 
                 } else {
+                    // ทำให้จอมืดลงเรื่อยๆ (Fade to Black)
                     Main.brightnessAlpha = alpha;
                     Main.repaintBrightness();
                 }

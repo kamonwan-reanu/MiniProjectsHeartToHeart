@@ -5,7 +5,7 @@ import java.awt.*;
 
 public class EffectManager {
     private JPanel targetPanel;
-    private DialogueBox dialogueBox; // สำหรับคุมการซ่อน/แสดงกล่องข้อความ
+    private DialogueBox dialogueBox; 
     private String currentEffect = "none";
     private float alpha = 0.0f;
     private int shakeX = 0, shakeY = 0;
@@ -15,7 +15,6 @@ public class EffectManager {
     private Timer fadeTimer;
     private Timer shakeTimer;
 
-    // รับ DialogueBox เข้ามาเพื่อจัดการ UI ในไฟล์เดียว
     public EffectManager(JPanel panel, DialogueBox dialogueBox) {
         this.targetPanel = panel;
         this.dialogueBox = dialogueBox;
@@ -25,11 +24,11 @@ public class EffectManager {
         return isPlaying;
     }
 
+    // ✨ ปรับปรุง stopAll ให้ล้างสถานะเกลี้ยงจริงๆ
     public void stopAll() {
-        if (fadeTimer != null && fadeTimer.isRunning()) fadeTimer.stop();
-        if (shakeTimer != null && shakeTimer.isRunning()) shakeTimer.stop();
+        if (fadeTimer != null) fadeTimer.stop();
+        if (shakeTimer != null) shakeTimer.stop();
         
-        // คืนค่า DialogueBox ให้แสดงผลปกติเสมอเมื่อหยุด Effect
         if (dialogueBox != null) dialogueBox.setVisible(true);
 
         this.currentEffect = "none";
@@ -37,47 +36,54 @@ public class EffectManager {
         this.shakeX = 0;
         this.shakeY = 0;
         this.isPlaying = false;
-        if (targetPanel != null) targetPanel.repaint();
+        
+        if (targetPanel != null) {
+            targetPanel.repaint();
+        }
     }
 
     public void play(String effectName) {
-    stopAll();
-    if (effectName == null || effectName.isEmpty() || effectName.equalsIgnoreCase("none")) return;
+        // เคลียร์ของเก่าก่อนเริ่มใหม่เสมอ
+        stopAll();
+        
+        if (effectName == null || effectName.isEmpty() || effectName.equalsIgnoreCase("none")) {
+            return;
+        }
 
-    this.currentEffect = effectName.toUpperCase();
-    this.isPlaying = true;
+        this.currentEffect = effectName.toUpperCase();
+        this.isPlaying = true;
 
-    switch (currentEffect) {
-        // ✨ เปลี่ยนชื่อเป็น WHITE_FADE_OUT ตามที่ Ahri ต้องการ
-        case "WHITE_FADE_OUT": 
-            alpha = 1.0f; // เริ่มที่ขาวสนิท
-            if (dialogueBox != null) dialogueBox.setVisible(false); // ซ่อนกล่องข้อความ
-            startFadeOutWithUI(0.01f); // เริ่มการจางออกพร้อมเปิด UI
-            break;
+        switch (currentEffect) {
+            case "WHITE_FADE_OUT": 
+                alpha = 1.0f;
+                if (dialogueBox != null) dialogueBox.setVisible(false);
+                startFadeOutWithUI(0.01f);
+                break;
 
-        case "FADE_WHITE_OPEN":
-            alpha = 0.0f;
-            startFade(0.01f);
-            break;
+            case "FADE_WHITE_OPEN":
+                alpha = 0.0f;
+                startFade(0.01f);
+                break;
 
-        case "FADE_WHITE":
-        case "FADE_BLACK":
-            startFade(0.02f);
-            break;
+            case "FADE_WHITE":
+            case "FADE_BLACK":
+                alpha = 0.0f;
+                startFade(0.02f);
+                break;
 
-        case "SHAKE":
-            startShake(15, 600);
-            break;
+            case "SHAKE":
+                startShake(15, 600);
+                break;
 
-        case "FLASH":
-            startFlash();
-            break;
+            case "FLASH":
+                startFlash();
+                break;
 
-        default:
-            this.isPlaying = false;
-            break;
+            default:
+                this.isPlaying = false;
+                break;
+        }
     }
-}
 
     private void startFade(float speed) {
         fadeTimer = new Timer(20, e -> {
@@ -85,29 +91,27 @@ public class EffectManager {
             if (alpha >= 1.0f) {
                 alpha = 1.0f;
                 fadeTimer.stop();
+                this.isPlaying = false; // ปลดล็อคให้ PlayPage กดต่อได้
             }
-            targetPanel.repaint();
+            if (targetPanel != null) targetPanel.repaint();
         });
         fadeTimer.start();
     }
 
-    // ✨ เมธอดที่ Ahri ต้องการ: จางหายขาว -> โชว์กล่องข้อความ
     private void startFadeOutWithUI(float speed) {
         fadeTimer = new Timer(20, e -> {
             alpha -= speed;
             
-            // เมื่อจอเริ่มจางลง (เห็นพื้นหลังบ้างแล้ว) ค่อยโชว์กล่องข้อความ
-            if (alpha <= 0.5f && dialogueBox != null && !dialogueBox.isVisible()) {
-                dialogueBox.setVisible(true);
-            }
+            // ❌ ลบ If (alpha <= 0.5f...) ตรงนี้ทิ้งให้หมดเลยค่ะ! 
+            // เราจะไม่ให้กล่องโผล่จนกว่าจะจางหายไปจริงๆ ใน PlaySceneMain
 
             if (alpha <= 0.0f) {
                 alpha = 0.0f;
                 fadeTimer.stop();
-                isPlaying = false;
-                currentEffect = "none";
+                this.isPlaying = false; 
+                this.currentEffect = "none";
             }
-            targetPanel.repaint();
+            if (targetPanel != null) targetPanel.repaint();
         });
         fadeTimer.start();
     }
@@ -120,11 +124,12 @@ public class EffectManager {
                 shakeX = (int) (Math.random() * shakeIntensity * 2) - shakeIntensity;
                 shakeY = (int) (Math.random() * shakeIntensity * 2) - shakeIntensity;
             } else {
-                shakeX = 0; shakeY = 0;
+                shakeX = 0; 
+                shakeY = 0;
                 shakeTimer.stop();
-                isPlaying = false;
+                this.isPlaying = false;
             }
-            targetPanel.repaint();
+            if (targetPanel != null) targetPanel.repaint();
         });
         shakeTimer.start();
     }
@@ -136,10 +141,10 @@ public class EffectManager {
             if (alpha <= 0) {
                 alpha = 0;
                 fadeTimer.stop();
-                isPlaying = false;
-                currentEffect = "none";
+                this.isPlaying = false;
+                this.currentEffect = "none";
             }
-            targetPanel.repaint();
+            if (targetPanel != null) targetPanel.repaint();
         });
         fadeTimer.start();
     }
@@ -148,15 +153,21 @@ public class EffectManager {
         if (currentEffect.equals("none") || currentEffect.equals("SHAKE")) return;
 
         int alphaValue = Math.max(0, Math.min(255, (int)(alpha * 255)));
-
-        if (currentEffect.contains("WHITE") || currentEffect.equals("FLASH")) {
-            g2d.setColor(new Color(255, 255, 255, alphaValue));
-            g2d.fillRect(0, 0, w, h);
-        } else if (currentEffect.equals("FADE_BLACK")) {
-            g2d.setColor(new Color(0, 0, 0, alphaValue));
+        
+        if (alphaValue > 0) {
+            // ✨ ใช้ความแม่นยำในการเช็คคำสั่ง
+            if (currentEffect.contains("WHITE") || currentEffect.equals("FLASH")) {
+                g2d.setColor(new Color(255, 255, 255, alphaValue));
+            } else if (currentEffect.contains("BLACK")) { // เปลี่ยนเป็น contains เพื่อให้ครอบคลุม FADE_BLACK
+                g2d.setColor(new Color(0, 0, 0, alphaValue));
+            }
             g2d.fillRect(0, 0, w, h);
         }
     }
+
+    public float getAlpha() {
+        return this.alpha;
+    }       
 
     public int getShakeX() { return shakeX; }
     public int getShakeY() { return shakeY; }

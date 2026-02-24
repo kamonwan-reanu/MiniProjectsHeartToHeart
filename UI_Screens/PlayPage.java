@@ -14,7 +14,8 @@ public class PlayPage extends JPanel {
     private String fullText = "";
     private int charIndex = 0;
     private float textAlpha = 1.0f;
-    
+    private boolean isEffectTriggered = false;
+
     private JTextPane textPane; 
     private Timer typeTimer;
     private Timer fadeTimer;
@@ -23,9 +24,6 @@ public class PlayPage extends JPanel {
     public PlayPage(Font tFont) {
         setLayout(new GridBagLayout());
         setBackground(Color.BLACK); 
-        
-        // ✨ แก้ไขจุดที่ 1: ส่ง null แทน DialogueBox เพราะหน้านี้ใช้ JTextPane
-        // การส่ง null จะทำให้โค้ดไม่แดง และ EffectManager จะข้ามการสั่งซ่อนกล่องข้อความไปเอง
         this.effectManager = new EffectManager(this, null);
 
         textPane = new JTextPane() {
@@ -66,7 +64,6 @@ public class PlayPage extends JPanel {
         };
         textPane.addMouseListener(clickAdapter);
         addMouseListener(clickAdapter);
-
         add(textPane);
     }
 
@@ -84,6 +81,7 @@ public class PlayPage extends JPanel {
         storyIndex = 0;
         textAlpha = 1.0f;
         textPane.setText("");
+        isEffectTriggered = false;
         if (effectManager != null) effectManager.stopAll();
         
         if (StoryData.SCENE_1 != null && StoryData.SCENE_1.length > 0) {
@@ -92,6 +90,9 @@ public class PlayPage extends JPanel {
     }
 
     private void checkAndPlayEffect() {
+        if (isEffectTriggered) return;
+        isEffectTriggered = true; 
+        
         if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
             Object[] lineData = StoryData.SCENE_1[storyIndex];
             if (lineData.length >= 6) {
@@ -106,8 +107,9 @@ public class PlayPage extends JPanel {
     private void startTypewriter(String text) {
         fullText = text.replace("[PLAYER]", GameConstants.PLAYER_NAME);
         charIndex = 0;
-        textAlpha = 1.0f; 
+        textAlpha = 1.0f; // รีเซ็ตความสว่างตัวหนังสือใหม่
         textPane.setText(""); 
+        isEffectTriggered = false; 
         
         if (typeTimer != null) typeTimer.stop();
         typeTimer = new Timer(GameConstants.TYPEWRITER_SPEED, e -> {
@@ -117,13 +119,14 @@ public class PlayPage extends JPanel {
                 centerText(); 
             } else {
                 typeTimer.stop();
-                checkAndPlayEffect();
+                checkAndPlayEffect(); 
             }
         });
         typeTimer.start();
     }
 
     private void handlePageClick() {
+        // 1. เช็คว่ามีเอฟเฟกต์ไหม
         boolean hasEffect = false;
         if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
             Object[] lineData = StoryData.SCENE_1[storyIndex];
@@ -133,18 +136,68 @@ public class PlayPage extends JPanel {
             }
         }
 
+        // 2. 🚫 ล็อค: ถ้า Effect กำลังเล่น ห้ามกดข้ามเด็ดขาด
+        if (effectManager != null && effectManager.isPlaying()) {
+            return; 
+        }
+
+        // 3. ถ้ากำลังพิมพ์ข้อความ
         if (typeTimer != null && typeTimer.isRunning()) {
-            if (hasEffect) {
-                return; 
-            } else {
-                typeTimer.stop();
-                textPane.setText(fullText); 
-                charIndex = fullText.length();
-                centerText(); 
-                checkAndPlayEffect();
-            }
-        } else if (fadeTimer == null || !fadeTimer.isRunning()) {
+            if (hasEffect) return; // 🚫 ถ้ามีเอฟเฟกต์ ห้ามเร่งข้อความ
+            
+            typeTimer.stop();
+            textPane.setText(fullText); 
+            charIndex = fullText.length();
+            centerText(); 
+            checkAndPlayEffect();
+            return;
+        } 
+
+        // 4. ✅ ไปซีนต่อไป: ต้องพิมพ์จบ และ Effect จบแล้วเท่านั้น
+        if (fadeTimer == null || !fadeTimer.isRunning()) {
             startFadeOutNext();
+        }
+    }
+
+    private void startFadeOutNext() {
+        if (fadeTimer != null) fadeTimer.stop();
+        
+        // ค่อยๆ จางตัวหนังสือเก่าออกก่อน
+        fadeTimer = new Timer(30, e -> {
+            textAlpha -= 0.15f; 
+            if (textAlpha <= 0.0f) {
+                textAlpha = 0.0f;
+                fadeTimer.stop();
+                
+                // ✨ แก้บั๊กกะพริบ: เปลี่ยน index หลังจากจางหายสนิทแล้วเท่านั้น
+                storyIndex++; 
+                
+                // ล้าง Effect เก่าทิ้งก่อนขึ้นประโยคใหม่
+                if (effectManager != null) effectManager.stopAll();
+                
+                goToNextSentence();
+            }
+            repaint();
+        });
+        fadeTimer.start();
+    }
+
+    private void goToNextSentence() {
+        isEffectTriggered = false; 
+
+        if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
+            startTypewriter((String) StoryData.SCENE_1[storyIndex][1]);
+        } else {
+            // จบ Scene 1 เปลี่ยนหน้า
+            if (Main.cardLayout != null) {
+                for (Component comp : Main.mainContainer.getComponents()) {
+                    if (comp instanceof PlaySceneMain) {
+                        ((PlaySceneMain) comp).loadNewScene(StoryData.SCENE_2, "SCENE_2");
+                        break;
+                    }
+                }
+                Main.cardLayout.show(Main.mainContainer, "PLAY_SCENE"); 
+            }
         }
     }
 
@@ -162,36 +215,5 @@ public class PlayPage extends JPanel {
         textPane.setPreferredSize(new Dimension((int)(w * 0.8), h / 2));
         textPane.setFont(new Font("Tahoma", Font.PLAIN, Math.max(24, h / 30)));
         revalidate();
-    }
-
-    private void startFadeOutNext() {
-        if (fadeTimer != null) fadeTimer.stop();
-        fadeTimer = new Timer(30, e -> {
-            textAlpha -= 0.10f; 
-            if (textAlpha <= 0.0f) {
-                textAlpha = 0.0f;
-                fadeTimer.stop();
-                storyIndex++; 
-                goToNextSentence();
-            }
-            repaint();
-        });
-        fadeTimer.start();
-    }
-
-    private void goToNextSentence() {
-        if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
-            startTypewriter((String) StoryData.SCENE_1[storyIndex][1]);
-        } else {
-            if (Main.cardLayout != null) {
-                for (Component comp : Main.mainContainer.getComponents()) {
-                    if (comp instanceof PlaySceneMain) {
-                        ((PlaySceneMain) comp).loadNewScene(StoryData.SCENE_2, "SCENE_2");
-                        break;
-                    }
-                }
-                Main.cardLayout.show(Main.mainContainer, "PLAY_SCENE"); 
-            }
-        }
     }
 }
