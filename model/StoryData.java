@@ -105,7 +105,4 @@ public class StoryData {
     }
 };
 
-public static final Object[][] SCENE_6 = {
-            { "PLAYER", "1111111111111111111111", "ahri.png", "scene1.jpg", "none", "SHAKE" }
-    };
 }
