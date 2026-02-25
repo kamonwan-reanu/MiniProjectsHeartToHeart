@@ -176,7 +176,6 @@ public class PlaySceneMain extends JPanel {
         characterLayer.setBounds(0, 0, w, h);
         effectLayer.setBounds(0, 0, w, h);
         
-        // ✨ ปรับ groupH ให้สูงขึ้นเล็กน้อยเพื่อรองรับ 2 บรรทัดแบบโปรๆ
         int groupW = (int) (w * 0.70); 
         int groupH = (int) (h * 0.25); 
         
@@ -187,7 +186,6 @@ public class PlaySceneMain extends JPanel {
             int dynamicOffset = (buttonCount * 65) + 100; 
             dialogueY = h - groupH - dynamicOffset; 
         } else {
-            // ✨ ขยับขึ้นจากขอบล่าง 100px เพื่อให้ตัวหนังสือบรรทัดล่างไม่เบียด
             dialogueY = h - groupH - 100; 
         }
         
@@ -259,7 +257,6 @@ public class PlaySceneMain extends JPanel {
             }
         }
 
-        // ✨ ถ้ามีเอฟเฟกต์ ให้ซ่อนกล่องไว้ก่อนจนกว่าจะเริ่มพิมพ์
         if (hasNewEffect) {
             dialogueBox.setVisible(false);
         } else {
@@ -283,11 +280,21 @@ public class PlaySceneMain extends JPanel {
             String num = String.valueOf(i + 1);
             String text = (String) choices[i][0];
             String targetScene = (String) choices[i][1];
-            ChoiceButton btn = new ChoiceButton(num, text, () -> {
+            // ดึงข้อมูลคะแนนถ้ามี
+            final String charName = (choices[i].length >= 4) ? (String) choices[i][2] : null;
+            final int score = (choices[i].length >= 4) ? (Integer) choices[i][3] : 0;
+
+            UI_Components.ChoiceButton btn = new UI_Components.ChoiceButton(num, text, () -> {
                 isChoiceMode = false;
-                pendingChoices = null; 
+                pendingChoices = null;
                 choiceLayer.removeAll();
                 choiceLayer.setVisible(false);
+
+                // อัปเดตคะแนนเข้าสู่ระบบก่อนเปลี่ยนซีน
+                if (charName != null && score != 0) {
+                    model.Relation.getInstance().addAffection(charName, score);
+                    UI_Components.RelationUI.getInstance().updateScore(charName);
+                }
                 loadNewScene(storyMap.get(targetScene), targetScene);
             });
             btn.setMaximumSize(new Dimension(targetWidth, fixedHeight));
@@ -350,7 +357,6 @@ public class PlaySceneMain extends JPanel {
 
         Timer waitTimer = new Timer(50, null);
         waitTimer.addActionListener(e -> {
-            // ✨ รอจนกว่าเอฟเฟกต์จะจางจนมองเห็นได้ (Alpha < 0.3)
             if (effectManager != null && (effectManager.isPlaying() || effectManager.getAlpha() > 0.3f)) {
                 return; 
             }
