@@ -1,10 +1,9 @@
 package core;
 
-import javax.swing.*;
 import UI_Screens.PlaySceneMain;
-import model.StoryData;
-import model.GameConstants;
 import java.awt.*;
+import javax.swing.*;
+import model.StoryData;
 
 public class TestMain {
     public static void main(String[] args) {

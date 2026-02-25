@@ -1,10 +1,10 @@
 package core; 
 
-import javax.swing.*;
+import UI_Screens.*;
 import java.awt.*;
-import UI_Screens.*; 
-import model.StoryData;    
-import model.SoundManager; 
+import javax.swing.*;
+import model.SoundManager;
+import model.StoryData; 
 
 public class Main {
     public static JFrame mainFrame;
