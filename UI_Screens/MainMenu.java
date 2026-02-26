@@ -5,8 +5,14 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.RoundRectangle2D;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.lang.reflect.Field;
 import core.Main; 
 import model.GameConstants; 
+import model.Relation;
+import model.StoryData; 
 
 public class MainMenu extends JPanel {
     private JLabel gameName;
@@ -41,8 +47,8 @@ public class MainMenu extends JPanel {
         buttonBox = new JPanel(new GridLayout(5, 1, 0, 15)); 
         buttonBox.setOpaque(false);
 
-        buttons = new JButton[]{
-            new JButton("เริ่มเกม"), new JButton("บันทึกเกม"), 
+        buttons = new JButton[]{ // แก้ไข syntax error ในการประกาศ array ของปุ่ม
+            new JButton("เริ่มเกม"), new JButton("โหลดเกม"), 
             new JButton("ตั้งค่า"), new JButton("เกี่ยวกับคนสร้าง"), 
             new JButton("ออกจากเกม")
         };
@@ -54,13 +60,9 @@ public class MainMenu extends JPanel {
             buttonBox.add(btn);
         }
 
-        // --- ✨ ปุ่มเริ่มเกม: เรียกใช้ UI ในเกมแทน JOptionPane ---
+        // --- ปุ่มเริ่มเกม: เรียกใช้ UI ในเกมแทน JOptionPane ---
         buttons[0].addActionListener(e -> showRegisterUI());
-
-        buttons[2].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING")); 
-        buttons[3].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "CREDIT"));
-        buttons[4].addActionListener(e -> showCustomExitDialog());
-
+        buttons[1].addActionListener(e -> loadGame());
         menuButtonPanel.add(buttonBox);
         mainContentPanel.add(menuButtonPanel, BorderLayout.CENTER);
         
@@ -152,30 +154,39 @@ public class MainMenu extends JPanel {
         confirmBtn.addActionListener(e -> {
             String name = inputField.getText().trim();
             if (name.isEmpty()) {
-                // ✨ แสดงการแจ้งเตือนเมื่อไม่ได้ใส่ชื่อ
                 warningLabel.setVisible(true);
                 inputField.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Color.RED));
-                // เขย่ากล่องนิดๆ (Repaint)
                 box.repaint();
                 return; 
             }
             
-            GameConstants.PLAYER_NAME = name;
+            model.GameConstants.PLAYER_NAME = name;
             
-            layeredPane.remove(registerOverlay);
-            registerOverlay = null; 
+            // 1. รีเซ็ตคะแนนความสัมพันธ์ทั้งหมดกลับเป็น 0
+            model.Relation.getInstance().resetAll();
+            UI_Components.RelationUI.getInstance().updateAllScores();
+            
+            // 2. บังคับให้ PlaySceneMain กลับไปที่ SCENE_1 เสมอ
+            for (Component comp : core.Main.mainContainer.getComponents()) {
+                if (comp instanceof UI_Screens.PlaySceneMain) {
+                    ((UI_Screens.PlaySceneMain) comp).loadNewScene(model.StoryData.SCENE_1, "SCENE_1");
+                    break;
+                }
+            }
+            if (registerOverlay != null) {
+                layeredPane.remove(registerOverlay);
+                registerOverlay = null; 
+            }
             
             startFadeOutAction();
         });
-
         box.add(title);
-        box.add(warningLabel); // ✨ เพิ่มเข้าไปในกล่อง
+        box.add(warningLabel); 
         box.add(inputField);
         box.add(confirmBtn);
         
         registerOverlay.add(box);
         registerOverlay.add(dimmer);
-
         layeredPane.add(registerOverlay, JLayeredPane.PALETTE_LAYER);
         layeredPane.revalidate();
         layeredPane.repaint();
@@ -183,14 +194,12 @@ public class MainMenu extends JPanel {
     }
 
     private void startFadeOutAction() {
-        // ✨ [จุดที่แก้] ถ้าหน้าจอลงทะเบียนยังค้างอยู่ ให้เอาออกทันทีที่เริ่ม Fade
         if (registerOverlay != null) {
             layeredPane.remove(registerOverlay);
             registerOverlay = null;
             layeredPane.revalidate();
             layeredPane.repaint();
         }
-
         stopMenuMusic();
         
         Timer fadeOutTimer = new Timer(20, new ActionListener() {
@@ -200,17 +209,12 @@ public class MainMenu extends JPanel {
                 alpha += 0.05f;
                 if (alpha >= 1.0f) {
                     ((Timer)e.getSource()).stop();
-                    
-                    // ✨ [จุดที่แก้] รีเซ็ตค่าความสว่างให้เป็นปกติก่อนเปลี่ยนหน้า
-                    Main.brightnessAlpha = 0.0f; 
-                    Main.repaintBrightness();
-                    
-                    // เปลี่ยนหน้าไปยังฉากเล่นเกม
-                    Main.cardLayout.show(Main.mainContainer, "PLAY_PAGE"); 
+                    core.Main.brightnessAlpha = 0.0f; 
+                    core.Main.repaintBrightness();
+                    core.Main.cardLayout.show(core.Main.mainContainer, "PLAY_PAGE"); 
                 } else {
-                    // ทำให้จอมืดลงเรื่อยๆ (Fade to Black)
-                    Main.brightnessAlpha = alpha;
-                    Main.repaintBrightness();
+                    core.Main.brightnessAlpha = alpha;
+                    core.Main.repaintBrightness();
                 }
             }
         });
@@ -248,6 +252,123 @@ public class MainMenu extends JPanel {
         revalidate(); repaint();
     }
 
+    private void loadGame() {
+        try {
+            String projectPath = System.getProperty("user.dir");
+            String savePath = projectPath + File.separator + "savegame.dat";
+            
+            System.out.println("กำลังโหลดไฟล์จาก: " + savePath);
+            
+            if (!Files.exists(Paths.get(savePath))) {
+                JOptionPane.showMessageDialog(this, 
+                    " ไม่พบไฟล์บันทึกเกม", 
+                    "ข้อผิดพลาด", 
+                    JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            
+            // อ่านข้อมูลจากไฟล์
+            String content = new String(Files.readAllBytes(Paths.get(savePath)), "UTF-8");
+            String[] lines = content.split("\n");
+            
+            int storyIndex = 0;
+            String sceneName = "SCENE_1";
+            int ahriAffection = 0;
+            String playerName = "";
+            
+            for (String line : lines) {
+                if (line.startsWith("storyIndex=")) {
+                    storyIndex = Integer.parseInt(line.substring(11));
+                } else if (line.startsWith("sceneName=")) {
+                    sceneName = line.substring(10);
+                } else if (line.startsWith("playerName=")) {
+                    playerName = line.substring(11);
+                } else if (line.startsWith("ahriAffection=")) {
+                    ahriAffection = Integer.parseInt(line.substring(14));
+                }
+            }
+            
+            // โหลดข้อมูลความสัมพันธ์
+            try {
+                Relation.getInstance().setAffection("Ahri", ahriAffection);
+                UI_Components.RelationUI.getInstance().updateAllScores();
+                System.out.println("ตั้งค่าความสัมพันธ์ Ahri: " + ahriAffection);
+            } catch (Exception ex) {
+                System.err.println("ไม่สามารถตั้งค่าความสัมพันธ์: " + ex.getMessage());
+            }
+            
+            // ตั้งชื่อผู้เล่น
+            if (!playerName.isEmpty()) {
+                GameConstants.PLAYER_NAME = playerName;
+                System.out.println("ตั้งชื่อผู้เล่น: " + playerName);
+            }
+            
+            System.out.println("โหลดข้อมูล: sceneName=" + sceneName + ", storyIndex=" + storyIndex);
+            
+            // ค้นหา PlaySceneMain ในหน้าจอหลัก
+            UI_Screens.PlaySceneMain playScene = null;
+            for (Component comp : core.Main.mainContainer.getComponents()) {
+                if (comp instanceof UI_Screens.PlaySceneMain) {
+                    playScene = (UI_Screens.PlaySceneMain) comp;
+                    break;
+                }
+            }
+            
+            if (playScene != null) {
+                // 1. ดึงข้อมูลฉากเป้าหมาย
+                Object[][] loadedSceneData = getSceneData(sceneName);
+
+                // 2. เรียกใช้เมธอด public เพื่อตั้งค่าฉากเบื้องต้น (อันนี้จะรีเซ็ต storyIndex เป็น 0)
+                playScene.loadNewScene(loadedSceneData, sceneName);
+                
+                // 3. ใช้ Reflection เพื่อยัดค่า storyIndex ที่โหลดมากลับเข้าไป
+                Field indexField = playScene.getClass().getDeclaredField("storyIndex");
+                indexField.setAccessible(true);
+                indexField.set(playScene, storyIndex);
+
+                // 4. บังคับให้อัปเดตหน้าจอเพื่อดึงข้อความของประโยคที่ถูกต้องมาแสดง
+                playScene.updateScene(loadedSceneData[storyIndex]);
+
+                // 5. เปลี่ยนหน้าจอไปยังฉากเล่นเกม
+                core.Main.cardLayout.show(core.Main.mainContainer, "PLAY_SCENE");
+                
+                JOptionPane.showMessageDialog(this, 
+                    "✅ โหลดเกมสำเร็จ!\n" +
+                    "ซีน: " + sceneName + "\n" +
+                    "ดัชนี: " + storyIndex + "\n" +
+                    "ความสัมพันธ์ Ahri: " + ahriAffection,
+                    "โหลดเกม",
+                    JOptionPane.INFORMATION_MESSAGE);
+                    
+                System.out.println("ข้ามไปหน้าจอ PLAY_SCENE แล้ว");
+            } else {
+                System.err.println("ไม่พบ PlaySceneMain สำหรับโหลดข้อมูล");
+            }
+                
+        } catch (Exception ex) {
+            System.err.println("ไม่สามารถโหลดเกมได้: " + ex.getMessage());
+            ex.printStackTrace();
+            
+            JOptionPane.showMessageDialog(this, 
+                "❌ ไม่สามารถโหลดเกมได้: " + ex.getMessage(), 
+                "ข้อผิดพลาด", 
+                JOptionPane.ERROR_MESSAGE);
+        }
+    }
+    
+    private Object[][] getSceneData(String sceneName) {
+        try {
+            // ใช้ Reflection เพื่อดึงข้อมูลซีนจาก StoryData
+            Class<?> storyDataClass = Class.forName("model.StoryData");
+            Field sceneField = storyDataClass.getDeclaredField(sceneName);
+            sceneField.setAccessible(true);
+            return (Object[][]) sceneField.get(null);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return null;
+        }
+    }
+    
     private void showCustomExitDialog() {
         JDialog exitDialog = new JDialog(Main.mainFrame, "ยืนยัน", true);
         exitDialog.setUndecorated(true);

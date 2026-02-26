@@ -5,6 +5,9 @@ import javax.swing.plaf.basic.BasicScrollBarUI;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.KeyListener;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 
 public class DialogueBox extends JPanel {
     private JLabel nameLabel;
@@ -166,7 +169,7 @@ public class DialogueBox extends JPanel {
     mainBox.setBounds(x, targetY, groupW, groupH);
     updateInsideLayout(groupW, groupH);
 
-    // ✨ แผนแทรกซึม (ย้ายมาไว้ใน moveTo เพราะ PlaySceneMain เรียกใช้ตัวนี้ตลอดเวลา)
+    // แผนแทรกซึม (ย้ายมาไว้ใน moveTo เพราะ PlaySceneMain เรียกใช้ตัวนี้ตลอดเวลา)
     Container parent = getParent(); 
     UI_Components.RelationUI relUI = UI_Components.RelationUI.getInstance();
     
@@ -187,6 +190,24 @@ public class DialogueBox extends JPanel {
     // บังคับให้หลอดอัปเดตตำแหน่งตามขนาดจอ
     relUI.updateBounds(parent.getWidth(), parent.getHeight());
     relUI.setVisible(true);
+    
+    // เพิ่ม KeyListener สำหรับปุ่ม ESC
+    parent.setFocusable(true);
+    parent.requestFocusInWindow();
+    
+    // ลบ KeyListener เก่าก่อนเพื่อป้องกันการซ้ำซ้อน
+    for (KeyListener kl : parent.getKeyListeners()) {
+        parent.removeKeyListener(kl);
+    }
+    
+    parent.addKeyListener(new KeyAdapter() {
+        @Override
+        public void keyPressed(KeyEvent e) {
+            if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                UI_Components.PauseMenuUI.getInstance().showMenu(parent);
+            }
+        }
+    });
 
     revalidate(); 
     repaint();
