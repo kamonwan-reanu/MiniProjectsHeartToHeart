@@ -20,20 +20,20 @@ public class MainMenu extends JPanel {
     private JButton[] buttons;
     private Timer bgmLoopTimer;
 
-    // ✨ ส่วนประกอบสำหรับ In-Game UI
     private JLayeredPane layeredPane;
     private JPanel mainContentPanel; 
     private JPanel registerOverlay;
+    private JTextField inputField;
+    private JLabel warningLabel;
 
     public MainMenu(Font titleFont, Font menuFont) {
         setLayout(new BorderLayout());
         setBackground(new Color(255, 230, 240));
 
-        // 🛠️ ใช้ JLayeredPane เพื่อทำ Layer ซ้อนทับกัน
         layeredPane = new JLayeredPane();
         add(layeredPane, BorderLayout.CENTER);
 
-        // --- 1. หน้า Main Menu ปกติ ---
+        // --- 1. หน้า Main Menu ปกติ (Layer 0) ---
         mainContentPanel = new JPanel(new BorderLayout());
         mainContentPanel.setOpaque(false);
         
@@ -47,7 +47,7 @@ public class MainMenu extends JPanel {
         buttonBox = new JPanel(new GridLayout(5, 1, 0, 15)); 
         buttonBox.setOpaque(false);
 
-        buttons = new JButton[]{ // แก้ไข syntax error ในการประกาศ array ของปุ่ม
+        buttons = new JButton[]{ 
             new JButton("เริ่มเกม"), new JButton("โหลดเกม"), 
             new JButton("ตั้งค่า"), new JButton("เกี่ยวกับคนสร้าง"), 
             new JButton("ออกจากเกม")
@@ -60,14 +60,20 @@ public class MainMenu extends JPanel {
             buttonBox.add(btn);
         }
 
-        // --- ปุ่มเริ่มเกม: เรียกใช้ UI ในเกมแทน JOptionPane ---
         buttons[0].addActionListener(e -> showRegisterUI());
         buttons[1].addActionListener(e -> loadGame());
+        buttons[2].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING"));
+        buttons[3].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "CREDIT"));
+        buttons[4].addActionListener(e -> showCustomExitDialog());
+
         menuButtonPanel.add(buttonBox);
         mainContentPanel.add(menuButtonPanel, BorderLayout.CENTER);
         
-        // ใส่หน้าเมนูลงใน Layer ล่างสุด
-        layeredPane.add(mainContentPanel, JLayeredPane.DEFAULT_LAYER);
+        // แอดปุ่มเมนูไว้เลเยอร์ล่างสุด
+        layeredPane.add(mainContentPanel, Integer.valueOf(0));
+
+        // --- 2. สร้างหน้าต่างกรอกชื่อ (Layer 300) เตรียมไว้ตั้งแต่ต้น ---
+        setupRegisterOverlay();
 
         this.addComponentListener(new ComponentAdapter() {
             @Override
@@ -79,35 +85,33 @@ public class MainMenu extends JPanel {
         startMenuMusic();
     }
 
-    // 🌸 ฟังก์ชันแสดงหน้ากรอกชื่อแบบ UI ในเกม (เวอร์ชันล็อคปุ่มข้างหลัง)
-    private void showRegisterUI() {
-        model.GameConstants.PLAYER_NAME = ""; 
-
-        if (registerOverlay != null) {
-            layeredPane.remove(registerOverlay);
-            registerOverlay = null;
-        }
-
+    private void setupRegisterOverlay() {
         registerOverlay = new JPanel(null);
         registerOverlay.setOpaque(false);
-        registerOverlay.setBounds(0, 0, getWidth(), getHeight());
+        registerOverlay.setVisible(false); // ซ่อนไว้ก่อน
 
+        // ตัวแผ่นใสบังจอ
         JPanel dimmer = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
-                g.setColor(new Color(0, 0, 0, 120));
+                g.setColor(new Color(0, 0, 0, 150)); // สีดำโปร่งแสง
                 g.fillRect(0, 0, getWidth(), getHeight());
             }
         };
-        dimmer.setBounds(0, 0, getWidth(), getHeight());
-
-        MouseAdapter lockMouse = new MouseAdapter() {
+        
+        // 🛑 หัวใจสำคัญ: บล็อกเมาส์ทุกรูปแบบไม่ให้ทะลุไปโดนปุ่มด้านล่าง 🛑
+        MouseAdapter blockMouse = new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) { e.consume(); }
             @Override public void mousePressed(MouseEvent e) { e.consume(); }
             @Override public void mouseReleased(MouseEvent e) { e.consume(); }
+            @Override public void mouseEntered(MouseEvent e) { e.consume(); }
+            @Override public void mouseExited(MouseEvent e) { e.consume(); }
+            @Override public void mouseMoved(MouseEvent e) { e.consume(); }
+            @Override public void mouseDragged(MouseEvent e) { e.consume(); }
         };
-        dimmer.addMouseListener(lockMouse);
-        
+        dimmer.addMouseListener(blockMouse);
+        dimmer.addMouseMotionListener(blockMouse);
+
         JPanel box = new JPanel(null) {
             @Override
             protected void paintComponent(Graphics g) {
@@ -121,28 +125,39 @@ public class MainMenu extends JPanel {
                 g2d.dispose();
             }
         };
-        box.setBounds((getWidth()-500)/2, (getHeight()-300)/2, 500, 300);
-        box.addMouseListener(lockMouse);
+        box.addMouseListener(blockMouse);
+        box.addMouseMotionListener(blockMouse);
 
         JLabel title = new JLabel("กรุณาระบุชื่อของคุณ");
         title.setFont(new Font("Tahoma", Font.BOLD, 24));
         title.setForeground(new Color(255, 105, 180));
-        title.setBounds(0, 30, 500, 40); // ขยับขึ้นนิดนึง
+        title.setBounds(0, 30, 500, 40);
         title.setHorizontalAlignment(SwingConstants.CENTER);
 
-        // ✨ [เพิ่ม] ข้อความแจ้งเตือน (ซ่อนไว้ก่อน)
-        JLabel warningLabel = new JLabel("! กรุณาใส่ชื่อตัวละครก่อนเริ่มต้นการเดินทาง !");
+        warningLabel = new JLabel("! กรุณาใส่ชื่อตัวละครก่อนเริ่มต้นการเดินทาง !");
         warningLabel.setFont(new Font("Tahoma", Font.BOLD, 14));
         warningLabel.setForeground(Color.RED);
         warningLabel.setBounds(0, 75, 500, 25);
         warningLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        warningLabel.setVisible(false); // ปิดไว้ก่อน
+        warningLabel.setVisible(false);
 
-        JTextField inputField = new JTextField();
+        inputField = new JTextField();
         inputField.setFont(new Font("Tahoma", Font.PLAIN, 22));
         inputField.setHorizontalAlignment(JTextField.CENTER);
         inputField.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, new Color(255, 182, 193)));
         inputField.setBounds(100, 120, 300, 45);
+
+        // กดปุ่ม ENTER เพื่อเริ่มเกม หรือ ESC เพื่อปิด
+        inputField.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    closeRegisterOverlay();
+                } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    startGameAction();
+                }
+            }
+        });
 
         JButton confirmBtn = new JButton("เริ่มต้นการเดินทาง");
         confirmBtn.setFont(new Font("Tahoma", Font.BOLD, 18));
@@ -150,36 +165,8 @@ public class MainMenu extends JPanel {
         confirmBtn.setForeground(Color.WHITE);
         confirmBtn.setFocusPainted(false);
         confirmBtn.setBounds(150, 200, 200, 50);
+        confirmBtn.addActionListener(e -> startGameAction());
 
-        confirmBtn.addActionListener(e -> {
-            String name = inputField.getText().trim();
-            if (name.isEmpty()) {
-                warningLabel.setVisible(true);
-                inputField.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Color.RED));
-                box.repaint();
-                return; 
-            }
-            
-            model.GameConstants.PLAYER_NAME = name;
-            
-            // 1. รีเซ็ตคะแนนความสัมพันธ์ทั้งหมดกลับเป็น 0
-            model.Relation.getInstance().resetAll();
-            UI_Components.RelationUI.getInstance().updateAllScores();
-            
-            // 2. บังคับให้ PlaySceneMain กลับไปที่ SCENE_1 เสมอ
-            for (Component comp : core.Main.mainContainer.getComponents()) {
-                if (comp instanceof UI_Screens.PlaySceneMain) {
-                    ((UI_Screens.PlaySceneMain) comp).loadNewScene(model.StoryData.SCENE_1, "SCENE_1");
-                    break;
-                }
-            }
-            if (registerOverlay != null) {
-                layeredPane.remove(registerOverlay);
-                registerOverlay = null; 
-            }
-            
-            startFadeOutAction();
-        });
         box.add(title);
         box.add(warningLabel); 
         box.add(inputField);
@@ -187,21 +174,52 @@ public class MainMenu extends JPanel {
         
         registerOverlay.add(box);
         registerOverlay.add(dimmer);
-        layeredPane.add(registerOverlay, JLayeredPane.PALETTE_LAYER);
-        layeredPane.revalidate();
-        layeredPane.repaint();
-        inputField.requestFocus();
+
+        // วางใน Layer บนสุด 
+        layeredPane.add(registerOverlay, Integer.valueOf(300));
+    }
+
+    private void showRegisterUI() {
+        // รีเซ็ตค่าและแสดงหน้าต่างที่ซ่อนอยู่
+        inputField.setText("");
+        inputField.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, new Color(255, 182, 193)));
+        warningLabel.setVisible(false);
+        applyResponsiveLayout(); // จัดตำแหน่งให้เป๊ะก่อนโชว์
+        registerOverlay.setVisible(true);
+        inputField.requestFocusInWindow();
+    }
+
+    private void closeRegisterOverlay() {
+        registerOverlay.setVisible(false);
+        Main.mainFrame.requestFocusInWindow();
+    }
+
+    private void startGameAction() {
+        String name = inputField.getText().trim();
+        if (name.isEmpty()) {
+            warningLabel.setVisible(true);
+            inputField.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Color.RED));
+            registerOverlay.repaint();
+            return; 
+        }
+        
+        GameConstants.PLAYER_NAME = name;
+        Relation.getInstance().resetAll();
+        UI_Components.RelationUI.getInstance().updateAllScores();
+        
+        for (Component comp : core.Main.mainContainer.getComponents()) {
+            if (comp instanceof UI_Screens.PlaySceneMain) {
+                ((UI_Screens.PlaySceneMain) comp).loadNewScene(StoryData.SCENE_1, "SCENE_1");
+                break;
+            }
+        }
+        
+        closeRegisterOverlay();
+        startFadeOutAction();
     }
 
     private void startFadeOutAction() {
-        if (registerOverlay != null) {
-            layeredPane.remove(registerOverlay);
-            registerOverlay = null;
-            layeredPane.revalidate();
-            layeredPane.repaint();
-        }
         stopMenuMusic();
-        
         Timer fadeOutTimer = new Timer(20, new ActionListener() {
             float alpha = 0.0f;
             @Override
@@ -209,35 +227,34 @@ public class MainMenu extends JPanel {
                 alpha += 0.05f;
                 if (alpha >= 1.0f) {
                     ((Timer)e.getSource()).stop();
-                    core.Main.brightnessAlpha = 0.0f; 
-                    core.Main.repaintBrightness();
-                    core.Main.cardLayout.show(core.Main.mainContainer, "PLAY_PAGE"); 
+                    Main.brightnessAlpha = 0.0f; 
+                    Main.repaintBrightness();
+                    Main.cardLayout.show(Main.mainContainer, "PLAY_PAGE"); 
                 } else {
-                    core.Main.brightnessAlpha = alpha;
-                    core.Main.repaintBrightness();
+                    Main.brightnessAlpha = alpha;
+                    Main.repaintBrightness();
                 }
             }
         });
         fadeOutTimer.start();
     }
 
-    private void startMenuMusic() {
-        String bgmPath = GameConstants.SOUND_PATH + "music_mainmenu.wav"; 
-        Main.soundManager.playBGM(bgmPath); 
-    }
-
-    public void stopMenuMusic() {
-        if (bgmLoopTimer != null) bgmLoopTimer.stop();
-        Main.soundManager.stopBGM(); 
-    }
-
     private void applyResponsiveLayout() {
         int w = getWidth(); int h = getHeight();
         if (w <= 0 || h <= 0) return;
 
-        // จัดขนาด Layer ให้เต็มจอเสมอ
         mainContentPanel.setBounds(0, 0, w, h);
-        if (registerOverlay != null) registerOverlay.setBounds(0, 0, w, h);
+        
+        if (registerOverlay != null) {
+            registerOverlay.setBounds(0, 0, w, h);
+            // อัปเดตขนาดให้ dimmer และ box
+            if (registerOverlay.getComponentCount() > 1) {
+                Component box = registerOverlay.getComponent(0);
+                Component dimmer = registerOverlay.getComponent(1);
+                dimmer.setBounds(0, 0, w, h);
+                box.setBounds((w - 500) / 2, (h - 300) / 2, 500, 300);
+            }
+        }
 
         mainContentPanel.setBorder(new EmptyBorder(h / 10, w / 5, h / 10, w / 5)); 
         float titleSize = Math.min(w * 0.08f, 65f);
@@ -257,17 +274,12 @@ public class MainMenu extends JPanel {
             String projectPath = System.getProperty("user.dir");
             String savePath = projectPath + File.separator + "savegame.dat";
             
-            System.out.println("กำลังโหลดไฟล์จาก: " + savePath);
-            
             if (!Files.exists(Paths.get(savePath))) {
                 JOptionPane.showMessageDialog(this, 
-                    " ไม่พบไฟล์บันทึกเกม", 
-                    "ข้อผิดพลาด", 
-                    JOptionPane.ERROR_MESSAGE);
+                    "❌ ไม่พบไฟล์บันทึกเกม", "ข้อผิดพลาด", JOptionPane.ERROR_MESSAGE);
                 return;
             }
             
-            // อ่านข้อมูลจากไฟล์
             String content = new String(Files.readAllBytes(Paths.get(savePath)), "UTF-8");
             String[] lines = content.split("\n");
             
@@ -277,35 +289,17 @@ public class MainMenu extends JPanel {
             String playerName = "";
             
             for (String line : lines) {
-                if (line.startsWith("storyIndex=")) {
-                    storyIndex = Integer.parseInt(line.substring(11));
-                } else if (line.startsWith("sceneName=")) {
-                    sceneName = line.substring(10);
-                } else if (line.startsWith("playerName=")) {
-                    playerName = line.substring(11);
-                } else if (line.startsWith("ahriAffection=")) {
-                    ahriAffection = Integer.parseInt(line.substring(14));
-                }
+                if (line.startsWith("storyIndex=")) storyIndex = Integer.parseInt(line.substring(11).trim());
+                else if (line.startsWith("sceneName=")) sceneName = line.substring(10).trim();
+                else if (line.startsWith("playerName=")) playerName = line.substring(11).trim();
+                else if (line.startsWith("ahriAffection=")) ahriAffection = Integer.parseInt(line.substring(14).trim());
             }
             
-            // โหลดข้อมูลความสัมพันธ์
-            try {
-                Relation.getInstance().setAffection("Ahri", ahriAffection);
-                UI_Components.RelationUI.getInstance().updateAllScores();
-                System.out.println("ตั้งค่าความสัมพันธ์ Ahri: " + ahriAffection);
-            } catch (Exception ex) {
-                System.err.println("ไม่สามารถตั้งค่าความสัมพันธ์: " + ex.getMessage());
-            }
+            Relation.getInstance().setAffection("Ahri", ahriAffection);
+            UI_Components.RelationUI.getInstance().updateAllScores();
             
-            // ตั้งชื่อผู้เล่น
-            if (!playerName.isEmpty()) {
-                GameConstants.PLAYER_NAME = playerName;
-                System.out.println("ตั้งชื่อผู้เล่น: " + playerName);
-            }
+            if (!playerName.isEmpty()) GameConstants.PLAYER_NAME = playerName;
             
-            System.out.println("โหลดข้อมูล: sceneName=" + sceneName + ", storyIndex=" + storyIndex);
-            
-            // ค้นหา PlaySceneMain ในหน้าจอหลัก
             UI_Screens.PlaySceneMain playScene = null;
             for (Component comp : core.Main.mainContainer.getComponents()) {
                 if (comp instanceof UI_Screens.PlaySceneMain) {
@@ -315,58 +309,38 @@ public class MainMenu extends JPanel {
             }
             
             if (playScene != null) {
-                // 1. ดึงข้อมูลฉากเป้าหมาย
                 Object[][] loadedSceneData = getSceneData(sceneName);
-
-                // 2. เรียกใช้เมธอด public เพื่อตั้งค่าฉากเบื้องต้น (อันนี้จะรีเซ็ต storyIndex เป็น 0)
-                playScene.loadNewScene(loadedSceneData, sceneName);
-                
-                // 3. ใช้ Reflection เพื่อยัดค่า storyIndex ที่โหลดมากลับเข้าไป
-                Field indexField = playScene.getClass().getDeclaredField("storyIndex");
-                indexField.setAccessible(true);
-                indexField.set(playScene, storyIndex);
-
-                // 4. บังคับให้อัปเดตหน้าจอเพื่อดึงข้อความของประโยคที่ถูกต้องมาแสดง
-                playScene.updateScene(loadedSceneData[storyIndex]);
-
-                // 5. เปลี่ยนหน้าจอไปยังฉากเล่นเกม
-                core.Main.cardLayout.show(core.Main.mainContainer, "PLAY_SCENE");
-                
-                JOptionPane.showMessageDialog(this, 
-                    "✅ โหลดเกมสำเร็จ!\n" +
-                    "ซีน: " + sceneName + "\n" +
-                    "ดัชนี: " + storyIndex + "\n" +
-                    "ความสัมพันธ์ Ahri: " + ahriAffection,
-                    "โหลดเกม",
-                    JOptionPane.INFORMATION_MESSAGE);
+                if(loadedSceneData != null) {
+                    playScene.loadNewScene(loadedSceneData, sceneName);
                     
-                System.out.println("ข้ามไปหน้าจอ PLAY_SCENE แล้ว");
-            } else {
-                System.err.println("ไม่พบ PlaySceneMain สำหรับโหลดข้อมูล");
+                    Field indexField = playScene.getClass().getDeclaredField("storyIndex");
+                    indexField.setAccessible(true);
+                    indexField.set(playScene, storyIndex);
+                    
+                    playScene.updateScene(loadedSceneData[storyIndex]);
+                    
+                    JOptionPane.showMessageDialog(this, 
+                        "✅ โหลดเกมสำเร็จ!\nซีน: " + sceneName + "\nความสัมพันธ์ Ahri: " + ahriAffection,
+                        "โหลดเกม", JOptionPane.INFORMATION_MESSAGE);
+                        
+                    stopMenuMusic();
+                    core.Main.cardLayout.show(core.Main.mainContainer, "PLAY_SCENE");
+                }
             }
-                
-        } catch (Exception ex) {
-            System.err.println("ไม่สามารถโหลดเกมได้: " + ex.getMessage());
-            ex.printStackTrace();
             
-            JOptionPane.showMessageDialog(this, 
-                "❌ ไม่สามารถโหลดเกมได้: " + ex.getMessage(), 
-                "ข้อผิดพลาด", 
-                JOptionPane.ERROR_MESSAGE);
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "❌ โหลดเกมล้มเหลว: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            ex.printStackTrace();
         }
     }
     
     private Object[][] getSceneData(String sceneName) {
         try {
-            // ใช้ Reflection เพื่อดึงข้อมูลซีนจาก StoryData
             Class<?> storyDataClass = Class.forName("model.StoryData");
             Field sceneField = storyDataClass.getDeclaredField(sceneName);
             sceneField.setAccessible(true);
             return (Object[][]) sceneField.get(null);
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            return null;
-        }
+        } catch (Exception ex) { return null; }
     }
     
     private void showCustomExitDialog() {
@@ -393,5 +367,15 @@ public class MainMenu extends JPanel {
         exitDialog.add(panel); exitDialog.pack();
         exitDialog.setLocationRelativeTo(Main.mainFrame);
         exitDialog.setVisible(true);
+    }
+
+    private void startMenuMusic() {
+        String bgmPath = GameConstants.SOUND_PATH + "music_mainmenu.wav"; 
+        Main.soundManager.playBGM(bgmPath); 
+    }
+
+    public void stopMenuMusic() {
+        if (bgmLoopTimer != null) bgmLoopTimer.stop();
+        Main.soundManager.stopBGM(); 
     }
 }

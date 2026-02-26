@@ -6,12 +6,13 @@ import java.awt.event.*;
 import java.util.HashMap;
 import java.util.Map;
 import UI_Components.DialogueBox;
-import UI_Components.ChoiceButton; 
 import UI_Components.CharacterSprite;
 import UI_Components.EffectManager;
+import UI_Components.RelationUI;
 import model.GameConstants;
 import model.SoundManager;
 import model.StoryData;
+import model.KeyConfig;
 
 public class PlaySceneMain extends JPanel {
     private Map<String, Object[][]> storyMap = new HashMap<>();
@@ -40,6 +41,10 @@ public class PlaySceneMain extends JPanel {
     
     private SoundManager soundManager = new SoundManager();
     private EffectManager effectManager;
+    
+    // เก็บ KeyBindings ไว้เพื่อล้างเมื่อไม่ใช้งาน
+    private InputMap inputMap;
+    private ActionMap actionMap;
 
     public PlaySceneMain(Object[][] sceneData, String charPath, String sceneName) {
         this.currentSceneData = sceneData;
@@ -76,6 +81,117 @@ public class PlaySceneMain extends JPanel {
         });
 
         dialogueBox.setOnNextRequested(this::handleInteraction);
+        
+        // ตั้งค่า KeyBindings สำหรับคีย์บอร์ด (ใช้ค่าจาก KeyConfig)
+        setupKeyBindings();
+    }
+    
+    /**
+     * ตั้งค่า KeyBindings สำหรับการควบคุมด้วยคีย์บอร์ด (ดึงค่าจาก KeyConfig)
+     */
+    private void setupKeyBindings() {
+        inputMap = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        actionMap = getActionMap();
+        
+        // === ปุ่มข้ามบทสนทนา / ต่อไป (ใช้ค่าจาก KeyConfig) ===
+        KeyStroke nextKey = KeyStroke.getKeyStroke(KeyConfig.getNextMsg(), 0);
+        inputMap.put(nextKey, "nextAction");
+        actionMap.put("nextAction", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                handleInteraction();
+            }
+        });
+        
+        // === ปุ่มดูสถานะความสัมพันธ์ (ใช้ค่าจาก KeyConfig) ===
+        KeyStroke relationKey = KeyStroke.getKeyStroke(KeyConfig.getRelationUI(), 0);
+        inputMap.put(relationKey, "toggleRelationUI");
+        actionMap.put("toggleRelationUI", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                RelationUI.getInstance().updateAllScores();
+                boolean isVisible = RelationUI.getInstance().isVisible();
+                RelationUI.getInstance().setVisible(!isVisible);
+            }
+        });
+        
+        // === ปุ่ม Escape (ใช้ค่าจาก KeyConfig) ===
+        KeyStroke escapeKey = KeyStroke.getKeyStroke(KeyConfig.getEscape(), 0);
+        inputMap.put(escapeKey, "escapeAction");
+        actionMap.put("escapeAction", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                System.out.println("กดปุ่ม Escape - กลับเมนู");
+            }
+        });
+    }
+    
+    /**
+     * เพิ่ม KeyBindings สำหรับปุ่มเลือกตัวเลือก (ใช้ค่าจาก KeyConfig)
+     */
+    private void setupChoiceKeyBindings(Object[][] choices) {
+        if (choices == null) return;
+        
+        // ล้าง KeyBindings เก่าของตัวเลือกก่อน
+        clearChoiceKeyBindings();
+        
+        // เพิ่ม KeyBindings สำหรับแต่ละตัวเลือก (ใช้ค่าจาก KeyConfig)
+        int[] choiceKeys = {KeyConfig.getChoice1(), KeyConfig.getChoice2(), KeyConfig.getChoice3()};
+        
+        for (int i = 0; i < Math.min(choices.length, 3); i++) {
+            final int choiceIndex = i;
+            final String targetScene = (String) choices[i][1];
+            final String charName = (choices[i].length >= 4) ? (String) choices[i][2] : null;
+            final int score = (choices[i].length >= 4) ? (Integer) choices[i][3] : 0;
+            
+            KeyStroke choiceKey = KeyStroke.getKeyStroke(choiceKeys[i], 0);
+            inputMap.put(choiceKey, "choice" + (i + 1));
+            actionMap.put("choice" + (i + 1), new AbstractAction() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    handleChoiceSelection(choiceIndex, targetScene, charName, score);
+                }
+            });
+        }
+    }
+    
+    /**
+     * ล้าง KeyBindings ของปุ่มเลือกตัวเลือก (ใช้ค่าจาก KeyConfig)
+     */
+    private void clearChoiceKeyBindings() {
+        int[] choiceKeys = {KeyConfig.getChoice1(), KeyConfig.getChoice2(), KeyConfig.getChoice3()};
+        
+        for (int i = 0; i < 3; i++) {
+            inputMap.remove(KeyStroke.getKeyStroke(choiceKeys[i], 0));
+            actionMap.remove("choice" + (i + 1));
+        }
+    }
+    
+    /**
+     * จัดการการเลือกตัวเลือกด้วยคีย์บอร์ด
+     */
+    private void handleChoiceSelection(int choiceIndex, String targetScene, String charName, int score) {
+        if (!isChoiceMode || pendingChoices == null) {
+            return;
+        }
+        
+        // ล้างตัวเลือกเก่า
+        choiceLayer.removeAll();
+        choiceLayer.setVisible(false);
+        isChoiceMode = false;
+        pendingChoices = null;
+        
+        // ล้าง KeyBindings ของตัวเลือก
+        clearChoiceKeyBindings();
+        
+        // อัปเดตคะแนน
+        if (charName != null && score != 0) {
+            model.Relation.getInstance().addAffection(charName, score);
+            UI_Components.RelationUI.getInstance().updateScore(charName);
+        }
+        
+        // โหลดฉากใหม่
+        loadNewScene(storyMap.get(targetScene), targetScene);
     }
 
     private void initStoryMap() {
@@ -275,6 +391,9 @@ public class PlaySceneMain extends JPanel {
         choiceLayer.removeAll();
         int targetWidth = (int)(getWidth() * 0.70); 
         int fixedHeight = 50; 
+
+        // 🔑 เพิ่ม KeyBindings สำหรับปุ่มเลือกตัวเลือก (ใช้ค่าจาก KeyConfig)
+        setupChoiceKeyBindings(choices);
 
         for (int i = 0; i < choices.length; i++) {
             String num = String.valueOf(i + 1);
