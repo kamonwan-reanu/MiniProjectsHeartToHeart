@@ -8,7 +8,7 @@ public class GameClient {
 
     public interface ClientListener {
         void onConnected(String playerName);
-        void onGameStart(int readSeconds);       // FIX #1: เพิ่ม callback นี้
+        void onGameStart(int readSeconds);
         void onPlayerJoined(String playerName, int totalPlayers);
         void onPlayerLeft(String playerName, int totalPlayers);
         void onScoreUpdate(String playerName, int score);
@@ -16,6 +16,9 @@ public class GameClient {
         void onChatMessage(String sender, String message);
         void onDisconnected(String reason);
         void onError(String message);
+
+        // ✨ รับรายชื่อผู้เล่นทั้งหมดในห้อง (index 0 = Host เสมอ)
+        void onPlayerListReceived(List<String> playerNames);
     }
 
     private Socket socket;
@@ -57,8 +60,17 @@ public class GameClient {
         if (msg.startsWith("WELCOME:")) {
             if (listener != null) listener.onConnected(msg.substring(8));
 
+        // ✨ รับรายชื่อผู้เล่นทั้งหมด — index 0 คือ Host เสมอ
+        } else if (msg.startsWith("PLAYER_LIST:")) {
+            String csv = msg.substring("PLAYER_LIST:".length());
+            List<String> names = new ArrayList<>();
+            for (String n : csv.split(",")) {
+                String t = n.trim();
+                if (!t.isEmpty()) names.add(t);
+            }
+            if (listener != null) listener.onPlayerListReceived(names);
+
         } else if (msg.startsWith("START_GAME:")) {
-            // FIX #1: Host สั่งเริ่มเกม — ส่ง readSeconds ไปให้ listener
             try {
                 int seconds = Integer.parseInt(msg.substring(11).trim());
                 if (listener != null) listener.onGameStart(seconds);
@@ -105,9 +117,9 @@ public class GameClient {
         }
     }
 
-    public void sendScore(int score) { send("SCORE:" + score); }
-    public void notifyChoiceReady()  { send("CHOICE_READY:"); }
-    public void sendChat(String msg) { send("CHAT:" + msg); }
+    public void sendScore(int score)     { send("SCORE:" + score); }
+    public void notifyChoiceReady()      { send("CHOICE_READY:"); }
+    public void sendChat(String msg)     { send("CHAT:" + msg); }
 
     public void disconnect() {
         connected = false;
@@ -116,6 +128,6 @@ public class GameClient {
 
     private void send(String msg) { if (out != null) out.println(msg); }
 
-    public boolean isConnected() { return connected; }
+    public boolean isConnected()  { return connected; }
     public String getPlayerName() { return playerName; }
 }

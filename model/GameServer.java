@@ -22,19 +22,32 @@ public class GameServer {
     private ServerSocket serverSocket;
     private final List<ClientHandler> clients = new CopyOnWriteArrayList<>();
     private final Map<String, Integer> playerScores  = new ConcurrentHashMap<>();
+
+    // ✨ เก็บลำดับชื่อผู้เล่น (index 0 = Host เสมอ)
+    private final List<String> playerNameOrder = new CopyOnWriteArrayList<>();
+
     private ServerListener listener;
     private boolean running = false;
-    private boolean locked  = false;   // FIX #3: ล็อคห้องหลังเริ่มเกม
+    private boolean locked  = false;
     private int port;
     private int expectedPlayers = 2;
 
+    // ✨ ชื่อ Host (set จาก MultiplayerLobby ก่อน start server)
+    private String hostPlayerName = "";
+
     public GameServer(int port) { this.port = port; }
 
-    public void setListener(ServerListener l) { this.listener = l; }
-    public void setExpectedPlayers(int n)     { this.expectedPlayers = n; }
+    public void setListener(ServerListener l)  { this.listener = l; }
+    public void setExpectedPlayers(int n)      { this.expectedPlayers = n; }
+    public void lockRoom()                     { locked = true; }
 
-    // FIX #3: ล็อคห้อง — ไม่รับ Client ใหม่
-    public void lockRoom() { locked = true; }
+    // ✨ MultiplayerLobby เรียก setHostName() ก่อน start() เพื่อให้ Host ติด index 0
+    public void setHostName(String name) {
+        this.hostPlayerName = name;
+        if (!playerNameOrder.contains(name)) {
+            playerNameOrder.add(0, name); // Host อยู่ index 0 เสมอ
+        }
+    }
 
     // Host ส่งคะแนนตัวเองเข้าระบบโดยตรง
     public void receiveHostScore(String name, int score) {
@@ -55,7 +68,6 @@ public class GameServer {
                 while (running) {
                     try {
                         Socket clientSocket = serverSocket.accept();
-                        // FIX #3: ถ้าล็อคแล้ว ปฏิเสธทันที
                         if (locked || clients.size() >= MAX_PLAYERS) {
                             PrintWriter out = new PrintWriter(
                                 new OutputStreamWriter(clientSocket.getOutputStream(), "UTF-8"), true);
@@ -80,11 +92,22 @@ public class GameServer {
         running = false;
         for (ClientHandler c : clients) c.disconnect();
         clients.clear();
+        playerNameOrder.clear();
         try { if (serverSocket != null) serverSocket.close(); } catch (IOException ignored) {}
     }
 
     public void broadcast(String message) {
         for (ClientHandler c : clients) c.send(message);
+    }
+
+    // ✨ สร้าง PLAYER_LIST string (index 0 = Host เสมอ)
+    private String buildPlayerList() {
+        StringBuilder sb = new StringBuilder("PLAYER_LIST:");
+        for (int i = 0; i < playerNameOrder.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append(playerNameOrder.get(i));
+        }
+        return sb.toString();
     }
 
     private void checkAllFinished() {
@@ -149,8 +172,22 @@ public class GameServer {
             if (msg.startsWith("JOIN:")) {
                 playerName = msg.substring(5).trim();
                 playerScores.put(playerName, 0);
+
+                // ✨ เพิ่มชื่อใน playerNameOrder (Host ถูกเพิ่มไว้แล้วตั้งแต่ setHostName)
+                if (!playerNameOrder.contains(playerName)) {
+                    playerNameOrder.add(playerName);
+                }
+
+                // แจ้งทุกคนว่ามีคนใหม่เข้ามา
                 broadcast("PLAYER_JOINED:" + playerName + ":" + clients.size());
+
+                // ✨ ส่ง WELCOME และ PLAYER_LIST ให้ client ใหม่ทราบว่าใครอยู่ในห้องแล้วบ้าง
                 send("WELCOME:" + playerName);
+                send(buildPlayerList());
+
+                // ✨ broadcast PLAYER_LIST อัปเดตให้ทุกคนในห้องด้วย
+                broadcast(buildPlayerList());
+
                 if (listener != null) listener.onPlayerJoined(playerName, clients.size());
 
             } else if (msg.startsWith("SCORE:")) {
@@ -163,7 +200,6 @@ public class GameServer {
                 } catch (NumberFormatException ignored) {}
 
             } else if (msg.startsWith("CHOICE_READY:")) {
-                // Client บอกว่าถึง Choice แล้ว — broadcast ให้ Host ตัดสินใจ
                 broadcast("CHOICE_READY:" + playerName);
 
             } else if (msg.equals("PING")) {
@@ -176,9 +212,12 @@ public class GameServer {
         public void disconnect() {
             clients.remove(this);
             playerScores.remove(playerName);
+            playerNameOrder.remove(playerName); // ✨ เอาออกจาก order ด้วย
             try { if (socket != null) socket.close(); } catch (IOException ignored) {}
             if (!playerName.equals("Unknown")) {
                 broadcast("PLAYER_LEFT:" + playerName + ":" + clients.size());
+                // ✨ broadcast list ที่อัปเดตแล้วให้ทุกคน
+                broadcast(buildPlayerList());
                 if (listener != null) listener.onPlayerLeft(playerName, clients.size());
             }
         }

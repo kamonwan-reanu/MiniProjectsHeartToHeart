@@ -10,7 +10,7 @@ public class Main {
     public static JFrame mainFrame;
     public static CardLayout cardLayout = new CardLayout();
     public static JPanel mainContainer = new JPanel(cardLayout);
-    public static SoundManager soundManager = new SoundManager(); 
+    public static SoundManager soundManager = new SoundManager();
     
     public static float brightnessAlpha = 0.0f;
     public static Color overlayColor = Color.BLACK;
