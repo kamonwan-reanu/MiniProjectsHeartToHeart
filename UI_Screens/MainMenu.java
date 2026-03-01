@@ -44,12 +44,15 @@ public class MainMenu extends JPanel {
         JPanel menuButtonPanel = new JPanel(new GridBagLayout());
         menuButtonPanel.setOpaque(false);
         
-        buttonBox = new JPanel(new GridLayout(5, 1, 0, 15)); 
+        buttonBox = new JPanel(new GridLayout(6, 1, 0, 15)); 
         buttonBox.setOpaque(false);
 
         buttons = new JButton[]{ 
-            new JButton("เริ่มเกม"), new JButton("โหลดเกม"), 
-            new JButton("ตั้งค่า"), new JButton("เกี่ยวกับคนสร้าง"), 
+            new JButton("เริ่มเกม"), 
+            new JButton("เล่นหลายคน"),  // ✅ เพิ่มใหม่
+            new JButton("โหลดเกม"), 
+            new JButton("ตั้งค่า"), 
+            new JButton("เกี่ยวกับคนสร้าง"), 
             new JButton("ออกจากเกม")
         };
 
@@ -61,10 +64,11 @@ public class MainMenu extends JPanel {
         }
 
         buttons[0].addActionListener(e -> showRegisterUI());
-        buttons[1].addActionListener(e -> loadGame());
-        buttons[2].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING"));
-        buttons[3].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "CREDIT"));
-        buttons[4].addActionListener(e -> showCustomExitDialog());
+        buttons[1].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "MULTIPLAYER")); // ✅ ใหม่
+        buttons[2].addActionListener(e -> loadGame());
+        buttons[3].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING"));
+        buttons[4].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "CREDIT"));
+        buttons[5].addActionListener(e -> showCustomExitDialog());
 
         menuButtonPanel.add(buttonBox);
         mainContentPanel.add(menuButtonPanel, BorderLayout.CENTER);
