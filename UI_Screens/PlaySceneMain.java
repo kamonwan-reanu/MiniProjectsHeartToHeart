@@ -1,6 +1,7 @@
 package UI_Screens;
 
-import javax.swing.*;
+import UI_Components.CharacterSprite;
+import UI_Components.DialogueBox;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.HashMap;
@@ -16,6 +17,10 @@ import model.GameClient;
 import model.SoundManager;
 import model.StoryData;
 import model.KeyConfig;
+import javax.swing.*;
+import model.GameConstants;
+import model.SoundManager; 
+import model.StoryData; 
 
 public class PlaySceneMain extends JPanel {
     private Map<String, Object[][]> storyMap = new HashMap<>();
@@ -454,6 +459,12 @@ public class PlaySceneMain extends JPanel {
             updateScene(currentSceneData[storyIndex]);
         } else {
             handleSceneTransition();
+            storyIndex++;
+            if (storyIndex == 17) { 
+                startHeartMiniGame(); 
+            }
+            if (storyIndex < currentSceneData.length) updateScene(currentSceneData[storyIndex]);
+            else handleSceneTransition();
         }
     }
 
@@ -513,5 +524,25 @@ public class PlaySceneMain extends JPanel {
             }
         });
         typeTimer.start();
+    }
+
+    private UI_Components.MemoryMiniGame currentMiniGame = null;
+
+    public void startHeartMiniGame() {
+        currentMiniGame = new UI_Components.MemoryMiniGame(() -> {
+            // เมื่อชนะ: บวกคะแนนให้ธีร์ และลบเกมออก
+            System.out.println("ชนะมินิเกมธีร์แล้ว!"); 
+            this.remove(currentMiniGame);
+            currentMiniGame = null;
+            repaint();
+            revalidate();
+        });
+
+        // ตั้งตำแหน่งให้อยู่กลางจอ
+        currentMiniGame.setBounds((getWidth() - 500) / 2, (getHeight() - 400) / 2, 500, 400);
+        
+        this.add(currentMiniGame);
+        this.setComponentZOrder(currentMiniGame, 0); // ให้ลอยอยู่หน้าสุดทับบทพูด
+        repaint();
     }
 }
