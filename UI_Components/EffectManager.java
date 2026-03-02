@@ -3,15 +3,23 @@ package UI_Components;
 import javax.swing.*;
 import java.awt.*;
 
+/**
+ * EffectManager v2 — แก้:
+ * FIX A: เพิ่ม setMultiplayerBypass() → ใน MP mode ไม่ซ่อน dialogueBox เลย
+ * FIX B: FADE_WHITE_OPEN ไม่ซ่อน UI อีกต่อไป (เป็น visual only)
+ */
 public class EffectManager {
     private JPanel targetPanel;
-    private DialogueBox dialogueBox; 
+    private DialogueBox dialogueBox;
     private String currentEffect = "none";
     private float alpha = 0.0f;
     private int shakeX = 0, shakeY = 0;
     private int shakeIntensity = 0;
     private boolean isPlaying = false;
-    
+
+    // FIX A: โหมด Multiplayer — ไม่ซ่อน dialogueBox เด็ดขาด
+    private boolean multiplayerBypass = false;
+
     private Timer fadeTimer;
     private Timer shakeTimer;
 
@@ -20,55 +28,56 @@ public class EffectManager {
         this.dialogueBox = dialogueBox;
     }
 
-    public boolean isPlaying() {
-        return isPlaying;
+    /** FIX A: เรียกจาก PlaySceneMain.setMultiplayerEffectBypass() */
+    public void setMultiplayerBypass(boolean bypass) {
+        this.multiplayerBypass = bypass;
     }
 
-    // ✨ ปรับปรุง stopAll ให้ล้างสถานะเกลี้ยงจริงๆ
+    public boolean isPlaying() { return isPlaying; }
+
     public void stopAll() {
-        if (fadeTimer != null) fadeTimer.stop();
+        if (fadeTimer  != null) fadeTimer.stop();
         if (shakeTimer != null) shakeTimer.stop();
-        
+
+        // คืน dialogueBox เสมอ
         if (dialogueBox != null) dialogueBox.setVisible(true);
 
-        this.currentEffect = "none";
-        this.alpha = 0.0f;
-        this.shakeX = 0;
-        this.shakeY = 0;
-        this.isPlaying = false;
-        
-        if (targetPanel != null) {
-            targetPanel.repaint();
-        }
+        currentEffect = "none";
+        alpha   = 0.0f;
+        shakeX  = 0;
+        shakeY  = 0;
+        isPlaying = false;
+
+        if (targetPanel != null) targetPanel.repaint();
     }
 
     public void play(String effectName) {
-        // เคลียร์ของเก่าก่อนเริ่มใหม่เสมอ
         stopAll();
-        
-        if (effectName == null || effectName.isEmpty() || effectName.equalsIgnoreCase("none")) {
-            return;
-        }
 
-        this.currentEffect = effectName.toUpperCase();
-        this.isPlaying = true;
+        if (effectName == null || effectName.isEmpty() || effectName.equalsIgnoreCase("none")) return;
+
+        currentEffect = effectName.toUpperCase();
+        isPlaying     = true;
 
         switch (currentEffect) {
-            case "WHITE_FADE_OUT": 
+
+            case "WHITE_FADE_OUT":
                 alpha = 1.0f;
-                if (dialogueBox != null) dialogueBox.setVisible(false);
-                startFadeOutWithUI(0.01f);
+                // FIX B: ซ่อน dialogueBox เฉพาะ Single Player เท่านั้น
+                if (!multiplayerBypass && dialogueBox != null) dialogueBox.setVisible(false);
+                startFadeOut(0.01f);
                 break;
 
             case "FADE_WHITE_OPEN":
+                // FIX B: visual effect เท่านั้น — ไม่ซ่อน UI
                 alpha = 0.0f;
-                startFade(0.01f);
+                startFadeIn(0.015f);
                 break;
 
             case "FADE_WHITE":
             case "FADE_BLACK":
                 alpha = 0.0f;
-                startFade(0.02f);
+                startFadeIn(0.02f);
                 break;
 
             case "SHAKE":
@@ -80,36 +89,38 @@ public class EffectManager {
                 break;
 
             default:
-                this.isPlaying = false;
+                isPlaying = false;
                 break;
         }
     }
 
-    private void startFade(float speed) {
+    // fade เข้า (alpha 0→1) แล้วหยุด
+    private void startFadeIn(float speed) {
         fadeTimer = new Timer(20, e -> {
             alpha += speed;
             if (alpha >= 1.0f) {
                 alpha = 1.0f;
-                fadeTimer.stop();
-                this.isPlaying = false; // ปลดล็อคให้ PlayPage กดต่อได้
+                ((Timer) e.getSource()).stop();
+                isPlaying = false;
+                // คืน dialogueBox กรณี Single Player
+                if (dialogueBox != null) dialogueBox.setVisible(true);
             }
             if (targetPanel != null) targetPanel.repaint();
         });
         fadeTimer.start();
     }
 
-    private void startFadeOutWithUI(float speed) {
+    // fade ออก (alpha 1→0)
+    private void startFadeOut(float speed) {
         fadeTimer = new Timer(20, e -> {
             alpha -= speed;
-            
-            // ❌ ลบ If (alpha <= 0.5f...) ตรงนี้ทิ้งให้หมดเลยค่ะ! 
-            // เราจะไม่ให้กล่องโผล่จนกว่าจะจางหายไปจริงๆ ใน PlaySceneMain
-
             if (alpha <= 0.0f) {
                 alpha = 0.0f;
-                fadeTimer.stop();
-                this.isPlaying = false; 
-                this.currentEffect = "none";
+                ((Timer) e.getSource()).stop();
+                isPlaying     = false;
+                currentEffect = "none";
+                // คืน dialogueBox เสมอ
+                if (dialogueBox != null) dialogueBox.setVisible(true);
             }
             if (targetPanel != null) targetPanel.repaint();
         });
@@ -117,17 +128,16 @@ public class EffectManager {
     }
 
     private void startShake(int intensity, int duration) {
-        this.shakeIntensity = intensity;
-        long startTime = System.currentTimeMillis();
+        shakeIntensity = intensity;
+        long t0 = System.currentTimeMillis();
         shakeTimer = new Timer(20, e -> {
-            if (System.currentTimeMillis() - startTime < duration) {
-                shakeX = (int) (Math.random() * shakeIntensity * 2) - shakeIntensity;
-                shakeY = (int) (Math.random() * shakeIntensity * 2) - shakeIntensity;
+            if (System.currentTimeMillis() - t0 < duration) {
+                shakeX = (int)(Math.random() * shakeIntensity * 2) - shakeIntensity;
+                shakeY = (int)(Math.random() * shakeIntensity * 2) - shakeIntensity;
             } else {
-                shakeX = 0; 
-                shakeY = 0;
-                shakeTimer.stop();
-                this.isPlaying = false;
+                shakeX = shakeY = 0;
+                ((Timer) e.getSource()).stop();
+                isPlaying = false;
             }
             if (targetPanel != null) targetPanel.repaint();
         });
@@ -140,9 +150,9 @@ public class EffectManager {
             alpha -= 0.1f;
             if (alpha <= 0) {
                 alpha = 0;
-                fadeTimer.stop();
-                this.isPlaying = false;
-                this.currentEffect = "none";
+                ((Timer) e.getSource()).stop();
+                isPlaying     = false;
+                currentEffect = "none";
             }
             if (targetPanel != null) targetPanel.repaint();
         });
@@ -151,24 +161,19 @@ public class EffectManager {
 
     public void drawEffects(Graphics2D g2d, int w, int h) {
         if (currentEffect.equals("none") || currentEffect.equals("SHAKE")) return;
-
-        int alphaValue = Math.max(0, Math.min(255, (int)(alpha * 255)));
-        
-        if (alphaValue > 0) {
-            // ✨ ใช้ความแม่นยำในการเช็คคำสั่ง
-            if (currentEffect.contains("WHITE") || currentEffect.equals("FLASH")) {
-                g2d.setColor(new Color(255, 255, 255, alphaValue));
-            } else if (currentEffect.contains("BLACK")) { // เปลี่ยนเป็น contains เพื่อให้ครอบคลุม FADE_BLACK
-                g2d.setColor(new Color(0, 0, 0, alphaValue));
-            }
-            g2d.fillRect(0, 0, w, h);
+        int alphaVal = Math.max(0, Math.min(255, (int)(alpha * 255)));
+        if (alphaVal <= 0) return;
+        if (currentEffect.contains("WHITE") || currentEffect.equals("FLASH")) {
+            g2d.setColor(new Color(255, 255, 255, alphaVal));
+        } else if (currentEffect.contains("BLACK")) {
+            g2d.setColor(new Color(0, 0, 0, alphaVal));
+        } else {
+            return;
         }
+        g2d.fillRect(0, 0, w, h);
     }
 
-    public float getAlpha() {
-        return this.alpha;
-    }       
-
-    public int getShakeX() { return shakeX; }
-    public int getShakeY() { return shakeY; }
+    public float getAlpha()  { return alpha; }
+    public int   getShakeX() { return shakeX; }
+    public int   getShakeY() { return shakeY; }
 }
