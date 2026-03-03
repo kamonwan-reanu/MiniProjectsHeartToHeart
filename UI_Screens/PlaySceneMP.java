@@ -18,23 +18,12 @@ import java.awt.event.*;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * PlaySceneMP — Visual Novel Engine สำหรับ Multiplayer โดยเฉพาะ
- * 
- * ไม่ต้องแตะ PlaySceneMain เลย
- * รองรับผู้เล่น 1-3 คน
- * จีบ Ahri เป็นตัวละครเดียว
- * มี TFT-style timer ทุก choice
- */
 public class PlaySceneMP extends JPanel {
 
-    // ============================================================
-    // State
-    // ============================================================
-    private Map<String, Object[][]> storyMap = new HashMap<>();
+    private final Map<String, Object[][]> storyMap = new HashMap<>();
     private Object[][] currentScene;
-    private String     sceneName   = "MP_INTRO";
-    private int        sceneIndex  = 0;
+    private String     sceneName  = "MP_INTRO";
+    private int        sceneIndex = 0;
     private Runnable   onGameFinished;
 
     private String  currentBG      = "";
@@ -45,43 +34,30 @@ public class PlaySceneMP extends JPanel {
     private boolean isChoiceMode   = false;
     private Object[][] pendingChoices = null;
 
-    // ============================================================
-    // UI Layers
-    // ============================================================
-    private JLabel           bgLayer;
-    private CharacterSprite  characterLayer;
-    private JPanel           effectLayer;
-    private JPanel           choiceLayer;
-    private DialogueBox      dialogueBox;
-    private Timer            typeTimer;
+    private JLabel              bgLayer;
+    private CharacterSprite     characterLayer;
+    private JPanel              effectLayer;
+    private JPanel              choiceLayer;
+    private DialogueBox         dialogueBox;
+    private Timer               typeTimer;
     private MultiplayerTimerBar timerBar;
 
-    // ============================================================
-    // Systems
-    // ============================================================
-    private SoundManager  soundManager  = new SoundManager();
-    private EffectManager effectManager;
+    private final SoundManager  soundManager  = new SoundManager();
+    private EffectManager       effectManager;
 
-    // ============================================================
-    // Multiplayer
-    // ============================================================
-    private GameServer mpServer      = null;
-    private GameClient mpClient      = null;
-    private int        mpReadSeconds = 30;
+    private GameServer mpServer       = null;
+    private GameClient mpClient       = null;
+    private int        mpReadSeconds  = 30;
     private int        mpTotalPlayers = 2;
 
-    // ============================================================
-    // Constructor
-    // ============================================================
     public PlaySceneMP() {
         setLayout(null);
         setOpaque(true);
         setBackground(Color.BLACK);
 
-        this.dialogueBox   = new DialogueBox();
-        this.effectManager = new EffectManager(this, dialogueBox);
-        // MP mode — ไม่ซ่อน dialogueBox เมื่อมี effect
-        this.effectManager.setMultiplayerBypass(true);
+        dialogueBox   = new DialogueBox();
+        effectManager = new EffectManager(this, dialogueBox);
+        effectManager.setMultiplayerBypass(true);
 
         initStoryMap();
         setupUIComponents();
@@ -99,43 +75,30 @@ public class PlaySceneMP extends JPanel {
         setupKeys();
     }
 
-    // ============================================================
-    // Public API (เรียกจาก MultiplayerLobby)
-    // ============================================================
-
-    /**
-     * เริ่มเกม MP ใหม่
-     * @param server  GameServer ถ้าเป็น Host, null ถ้าเป็น Client
-     * @param client  GameClient ถ้าเป็น Client, null ถ้าเป็น Host
-     * @param readSec เวลา timer ต่อ choice (วินาที)
-     */
+    // ── Public API ─────────────────────────────────────────
     public void startMPGame(GameServer server, GameClient client, int readSec) {
         this.mpServer       = server;
         this.mpClient       = client;
         this.mpReadSeconds  = (readSec > 0) ? readSec : 30;
-        this.mpTotalPlayers = (server != null) ? server.getPlayerCount() + 1 : 2;
+        this.mpTotalPlayers = (server != null) ? Math.max(server.getPlayerCount() + 1, 2) : 2;
 
-        // reset state
         Relation.getInstance().resetAll();
         RelationUI.getInstance().updateAllScores();
         effectManager.stopAll();
         effectManager.setMultiplayerBypass(true);
+        timerBar.resetAndHide();
 
-        // โหลดซีนแรก
         loadScene("MP_INTRO");
         updateLayout();
     }
 
     public void setOnGameFinished(Runnable r) { this.onGameFinished = r; }
 
-    /** GameClient เรียกเมื่อผู้เล่นอื่น CHOICE_READY */
     public void onRemotePlayerReady() {
-        if (timerBar != null) SwingUtilities.invokeLater(() -> timerBar.otherPlayerReady());
+        if (timerBar != null) SwingUtilities.invokeLater(timerBar::otherPlayerReady);
     }
 
-    // ============================================================
-    // Story Map — ใช้ StoryDataMP
-    // ============================================================
+    // ── Story Map ──────────────────────────────────────────
     private void initStoryMap() {
         for (String name : StoryDataMP.SCENE_ORDER) {
             Object[][] data = StoryDataMP.getScene(name);
@@ -143,9 +106,7 @@ public class PlaySceneMP extends JPanel {
         }
     }
 
-    // ============================================================
-    // UI Setup
-    // ============================================================
+    // ── UI Setup ───────────────────────────────────────────
     private void setupUIComponents() {
         bgLayer = new JLabel() {
             @Override protected void paintComponent(Graphics g) {
@@ -154,7 +115,7 @@ public class PlaySceneMP extends JPanel {
             }
         };
 
-        characterLayer = new CharacterSprite(currentChar) {
+        characterLayer = new CharacterSprite("") {
             @Override protected void paintComponent(Graphics g) { drawChar((Graphics2D) g); }
         };
 
@@ -174,52 +135,51 @@ public class PlaySceneMP extends JPanel {
 
         timerBar = new MultiplayerTimerBar();
 
+        add(timerBar);
         add(choiceLayer);
         add(dialogueBox);
         add(effectLayer);
         add(characterLayer);
         add(bgLayer);
-        add(timerBar);
 
         refreshZOrder();
     }
 
     private void drawBG(Graphics2D g2) {
-        g2.translate(effectManager.getShakeX(), effectManager.getShakeY());
+        if (effectManager != null) g2.translate(effectManager.getShakeX(), effectManager.getShakeY());
         if (currentBG == null || currentBG.isEmpty() || currentBG.equals("none")) return;
         try {
             Image img = new ImageIcon(currentBG).getImage();
             if (img == null || img.getWidth(null) <= 0) return;
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             int pw = getWidth(), ph = getHeight();
-            double s = Math.max((double)pw/img.getWidth(null), (double)ph/img.getHeight(null)) + 0.15;
-            int dw = (int)(img.getWidth(null)*s), dh = (int)(img.getHeight(null)*s);
-            g2.drawImage(img, (pw-dw)/2, (ph-dh)/2, dw, dh, this);
+            double s = Math.max((double) pw / img.getWidth(null), (double) ph / img.getHeight(null)) + 0.15;
+            int dw = (int)(img.getWidth(null) * s), dh = (int)(img.getHeight(null) * s);
+            g2.drawImage(img, (pw - dw) / 2, (ph - dh) / 2, dw, dh, this);
         } catch (Exception ignored) {}
     }
 
     private void drawChar(Graphics2D g2) {
-        g2.translate(effectManager.getShakeX(), effectManager.getShakeY());
+        if (effectManager != null) g2.translate(effectManager.getShakeX(), effectManager.getShakeY());
         if (currentChar == null || currentChar.isEmpty() || currentChar.equals("none")) return;
         try {
             Image img = new ImageIcon(currentChar).getImage();
             if (img == null || img.getWidth(null) <= 0) return;
             int ph = getHeight();
-            double r = (double)(ph+30)/img.getHeight(null);
-            int dw = (int)(img.getWidth(null)*r);
-            g2.drawImage(img, (getWidth()-dw)/2, 0, dw, ph+30, this);
+            double r = (double)(ph + 30) / img.getHeight(null);
+            int dw = (int)(img.getWidth(null) * r);
+            g2.drawImage(img, (getWidth() - dw) / 2, 0, dw, ph + 30, this);
         } catch (Exception ignored) {}
     }
 
     private void refreshZOrder() {
         try {
-            int z = 0;
-            if (timerBar.isVisible()) setComponentZOrder(timerBar, z++);
-            setComponentZOrder(effectLayer,    z++);
-            setComponentZOrder(choiceLayer,    z++);
-            setComponentZOrder(dialogueBox,    z++);
-            setComponentZOrder(characterLayer, z++);
-            setComponentZOrder(bgLayer,        z);
+            setComponentZOrder(timerBar,       0);
+            setComponentZOrder(choiceLayer,    1);
+            setComponentZOrder(dialogueBox,    2);
+            setComponentZOrder(effectLayer,    3);
+            setComponentZOrder(characterLayer, 4);
+            setComponentZOrder(bgLayer,        5);
         } catch (Exception ignored) {}
     }
 
@@ -231,36 +191,37 @@ public class PlaySceneMP extends JPanel {
         characterLayer.setBounds(0, 0, w, h);
         effectLayer.setBounds(0, 0, w, h);
 
-        // timer bar — กลางบน
-        if (timerBar.isVisible()) {
-            int tw = 460, th = 62;
-            timerBar.setBounds((w - tw) / 2, 8, tw, th);
-        }
+        // Timer bar — กลางบน ไม่ขึ้นกับ isVisible()
+        int tw = Math.min(460, w - 40), th = 62;
+        timerBar.setBounds((w - tw) / 2, 10, tw, th);
 
         int gw = (int)(w * 0.70);
         int gh = (int)(h * 0.25);
-        int btnCount = (choiceLayer.getComponentCount() + 1) / 2;
+        int btnCount = countChoiceButtons();
         int dialogueY = (isChoiceMode && btnCount > 0)
-            ? h - gh - (btnCount * 65) - 100
-            : h - gh - 100;
+            ? h - gh - (btnCount * 65) - 80
+            : h - gh - 80;
+        dialogueY = Math.max(dialogueY, 80);
 
         dialogueBox.moveTo(gw, gh, dialogueY);
-        choiceLayer.setBounds((w - gw) / 2, dialogueY + gh + 20, gw, Math.max(btnCount * 65, 50));
+        choiceLayer.setBounds((w - gw) / 2, dialogueY + gh + 14, gw, Math.max(btnCount * 65, 50));
 
-        revalidate(); repaint();
+        revalidate();
+        repaint();
     }
 
-    // ============================================================
-    // Scene Logic
-    // ============================================================
+    private int countChoiceButtons() {
+        int n = 0;
+        for (Component c : choiceLayer.getComponents())
+            if (c instanceof UI_Components.ChoiceButton) n++;
+        return n;
+    }
+
+    // ── Scene Logic ────────────────────────────────────────
     private void loadScene(String name) {
         Object[][] data = storyMap.get(name);
-        if (data == null) {
-            // ไม่พบ scene → จบเกม
-            finishGame();
-            return;
-        }
-        if (effectManager != null) effectManager.stopAll();
+        if (data == null) { finishGame(); return; }
+        effectManager.stopAll();
         currentScene = data;
         sceneName    = name;
         sceneIndex   = 0;
@@ -275,7 +236,6 @@ public class PlaySceneMP extends JPanel {
         isChoiceMode   = false;
         pendingChoices = null;
 
-        // ชื่อผู้พูด
         currentSpeaker = "";
         Object sp = line[0];
         if (sp != null) {
@@ -288,28 +248,26 @@ public class PlaySceneMP extends JPanel {
         dialogueBox.setText(currentSpeaker, "");
         fullText = line[1].toString().replace("[PLAYER]", GameConstants.PLAYER_NAME);
 
-        // รูปตัวละคร
         if (line.length >= 3) {
             String fn = (String) line[2];
             currentChar = (fn == null || fn.isEmpty() || fn.equals("none")) ? ""
-                : (fn.startsWith("model/") ? fn : GameConstants.CHAR_PATH + fn);
+                : fn.startsWith("model/") ? fn : GameConstants.CHAR_PATH + fn;
             characterLayer.updateCharacter(currentChar);
         }
 
-        // ฉากหลัง
         if (line.length >= 4) {
             String bg = (String) line[3];
             currentBG = (bg == null || bg.isEmpty() || bg.equals("none")) ? ""
-                : (bg.startsWith("model/") ? bg : GameConstants.SCENE_PATH + bg);
+                : bg.startsWith("model/") ? bg : GameConstants.SCENE_PATH + bg;
         }
 
-        // slot 4+ : effect / sound / choices
         for (int i = 4; i < line.length; i++) {
-            if (line[i] instanceof Object[][]) {
-                pendingChoices = (Object[][]) line[i];
+            Object slot = line[i];
+            if (slot instanceof Object[][]) {
+                pendingChoices = (Object[][]) slot;
                 isChoiceMode   = true;
-            } else if (line[i] instanceof String) {
-                String val = (String) line[i];
+            } else if (slot instanceof String) {
+                String val = (String) slot;
                 if (val == null || val.isEmpty() || val.equalsIgnoreCase("none")) continue;
                 String up = val.toUpperCase();
                 if (up.contains("FADE") || up.contains("WHITE") || up.contains("BLACK")
@@ -324,61 +282,63 @@ public class PlaySceneMP extends JPanel {
             }
         }
 
-        // MP bypass — แสดง dialogue เสมอ
         dialogueBox.setVisible(true);
         updateLayout();
-        revalidate(); repaint();
         startTypewriter();
     }
 
+    // ── Show Choices ───────────────────────────────────────
     private void showChoices(Object[][] choices) {
         if (choices == null) return;
         isChoiceMode = true;
         choiceLayer.removeAll();
-        int tw = (int)(getWidth() * 0.70);
+        int tw = Math.max((int)(getWidth() * 0.70), 300);
 
         for (int i = 0; i < choices.length; i++) {
-            String text        = (String) choices[i][0];
-            String targetScene = (String) choices[i][1];
-            final String cn    = (choices[i].length >= 4) ? (String)  choices[i][2] : null;
-            final int    cs    = (choices[i].length >= 4) ? (Integer) choices[i][3] : 0;
-            final String num   = String.valueOf(i + 1);
+            final String targetScene = (String)  choices[i][1];
+            final String cn          = choices[i].length >= 4 ? (String)  choices[i][2] : null;
+            final int    cs          = choices[i].length >= 4 ? (Integer) choices[i][3] : 0;
+            final String text        = (String)  choices[i][0];
+            final String num         = String.valueOf(i + 1);
 
             UI_Components.ChoiceButton btn = new UI_Components.ChoiceButton(num, text, () -> {
-                if (timerBar.isChoiceLocked()) return;
+                if (timerBar != null && timerBar.isChoiceLocked()) return;
                 doChoice(targetScene, cn, cs);
             });
-            btn.setMaximumSize(new Dimension(tw, 50));
-            btn.setPreferredSize(new Dimension(tw, 50));
+
+            btn.setMaximumSize(new Dimension(tw, 55));
+            btn.setPreferredSize(new Dimension(tw, 55));
             btn.setAlignmentX(Component.CENTER_ALIGNMENT);
             choiceLayer.add(btn);
-            if (i < choices.length - 1) choiceLayer.add(Box.createRigidArea(new Dimension(0, 10)));
+            if (i < choices.length - 1)
+                choiceLayer.add(Box.createRigidArea(new Dimension(0, 8)));
         }
 
         updateLayout();
         choiceLayer.setVisible(true);
+        refreshZOrder();
 
-        // ===== TFT Timer =====
-        // บอกผู้เล่นอื่นว่าเราถึง choice
         if (mpClient != null) mpClient.notifyChoiceReady();
 
-        // ล็อคปุ่มก่อน
-        for (Component c : choiceLayer.getComponents()) c.setEnabled(false);
+        String roundName = sceneName.replace("MP_", "");
+        timerBar.setRoundLabel("[ " + roundName + " ]");
 
-        String roundName = "[ " + sceneName.replace("MP_", "") + " ]";
-        timerBar.setRoundLabel(roundName);
+        int totalP = (mpServer != null) ? Math.max(mpServer.getPlayerCount() + 1, 2) : mpTotalPlayers;
+
+        // ล็อคปุ่มเฉพาะ multiplayer (totalP > 1)
+        if (totalP > 1) {
+            for (Component c : choiceLayer.getComponents())
+                if (c instanceof UI_Components.ChoiceButton) c.setEnabled(false);
+        }
 
         timerBar.setOnUnlock(() -> SwingUtilities.invokeLater(() -> {
-            for (Component c : choiceLayer.getComponents()) c.setEnabled(true);
+            for (Component c : choiceLayer.getComponents())
+                if (c instanceof UI_Components.ChoiceButton) c.setEnabled(true);
             repaint();
         }));
 
-        int totalP = (mpServer != null) ? mpServer.getPlayerCount() + 1 : mpTotalPlayers;
-        if (totalP < 1) totalP = 1;
-
         timerBar.startTimer(mpReadSeconds, totalP);
 
-        // Host นับตัวเองเป็น ready ทันที
         if (mpServer != null) timerBar.playerReachedChoice();
     }
 
@@ -388,24 +348,22 @@ public class PlaySceneMP extends JPanel {
         choiceLayer.removeAll();
         choiceLayer.setVisible(false);
         timerBar.stopTimer();
+        timerBar.resetAndHide();
 
-        if (charName != null && score != 0) {
+        if (charName != null && !charName.isEmpty() && score != 0) {
             Relation.getInstance().addAffection(charName, score);
             RelationUI.getInstance().updateScore(charName);
         }
 
-        // โหลด scene ถัดไป
         if (targetScene != null && storyMap.containsKey(targetScene)) {
             loadScene(targetScene);
-        } else if ("MP_END".equals(targetScene)) {
-            loadScene("MP_END");
         } else {
             finishGame();
         }
     }
 
+    // ── onNext ─────────────────────────────────────────────
     private void onNext() {
-        // MP: ไม่ block ด้วย effectManager.isPlaying()
         if (typeTimer != null && typeTimer.isRunning()) {
             typeTimer.stop();
             charIndex = fullText.length();
@@ -413,7 +371,7 @@ public class PlaySceneMP extends JPanel {
             return;
         }
 
-        int btnCount = (choiceLayer.getComponentCount() + 1) / 2;
+        int btnCount = countChoiceButtons();
         if (isChoiceMode && btnCount == 0 && pendingChoices != null) {
             showChoices(pendingChoices);
             return;
@@ -430,20 +388,10 @@ public class PlaySceneMP extends JPanel {
 
     private void nextScene() {
         timerBar.stopTimer();
-
-        // ถ้าเป็น MP_END → จบเกม
-        if ("MP_END".equals(sceneName)) {
-            finishGame();
-            return;
-        }
-
-        // หา scene ถัดไปจาก SCENE_ORDER
+        if ("MP_END".equals(sceneName)) { finishGame(); return; }
         String[] order = StoryDataMP.SCENE_ORDER;
         for (int i = 0; i < order.length - 1; i++) {
-            if (order[i].equals(sceneName)) {
-                loadScene(order[i + 1]);
-                return;
-            }
+            if (order[i].equals(sceneName)) { loadScene(order[i + 1]); return; }
         }
         finishGame();
     }
@@ -453,19 +401,11 @@ public class PlaySceneMP extends JPanel {
         if (onGameFinished != null) onGameFinished.run();
     }
 
-    // ============================================================
-    // Typewriter
-    // ============================================================
+    // ── Typewriter ─────────────────────────────────────────
     private void startTypewriter() {
         charIndex = 0;
         if (typeTimer != null) typeTimer.stop();
-        // MP: เริ่มพิมพ์ทันที ไม่รอ effect
-        runTypewriter();
-    }
-
-    private void runTypewriter() {
         dialogueBox.setVisible(true);
-        if (typeTimer != null) typeTimer.stop();
         typeTimer = new Timer(GameConstants.TYPEWRITER_SPEED, e -> {
             if (charIndex < fullText.length()) {
                 charIndex++;
@@ -477,14 +417,12 @@ public class PlaySceneMP extends JPanel {
         typeTimer.start();
     }
 
-    // ============================================================
-    // Keys
-    // ============================================================
+    // ── Keys ───────────────────────────────────────────────
     private void setupKeys() {
         InputMap  im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         ActionMap am = getActionMap();
-        im.put(KeyStroke.getKeyStroke(model.KeyConfig.getNextMsg(), 0), "next");
-        am.put("next", new AbstractAction() {
+        im.put(KeyStroke.getKeyStroke(model.KeyConfig.getNextMsg(), 0), "mp_next");
+        am.put("mp_next", new AbstractAction() {
             @Override public void actionPerformed(ActionEvent e) { onNext(); }
         });
     }

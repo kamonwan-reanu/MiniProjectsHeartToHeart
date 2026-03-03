@@ -35,7 +35,7 @@ public class StoryData {
     // SCENE_2 — เริ่มเรื่อง (ใน PlaySceneMain)
     // ============================================================
     public static final Object[][] SCENE_2 = {
-        { "", "..........",    "Teeraphat.png", "whiteroom.png", "WHITE_FADE_OUT" },
+        { "", "..........",    "Teeraphat.png", "whiteroom.png", "" },
         { "", "เจ็ดปี...",     "Teeraphat.png", "whiteroom.png" },
         { "", "ไม่ใช่ตัวเลขเล็กๆ มันยาวพอให้ฉันจำได้ว่าเขาชอบกาแฟแบบไหน", "Teeraphat.png", "whiteroom.png" },
         { "", "ยาวพอให้คุ้นเคยกับจังหวะลมหายใจของกันและกัน", "Teeraphat.png", "whiteroom.png" },
