@@ -33,6 +33,8 @@ public class MultiplayerLobby extends JPanel {
     private List<String> playerNames = new ArrayList<>();
     private String       hostName    = "Host";
 
+    private PlaySceneMP activeMPScene = null;
+
     private static final Color PINK       = new Color(255, 105, 180);
     private static final Color LIGHT_PINK = new Color(255, 230, 240);
     private static final Color BLUE       = new Color(100, 180, 255);
@@ -59,6 +61,7 @@ public class MultiplayerLobby extends JPanel {
         add(leaderboardPanel, "LEADERBOARD");
     }
 
+    // ── Panels ─────────────────────────────────────────────
     private void buildMainPanel() {
         mainPanel = new JPanel(null) {
             @Override public void doLayout() {
@@ -92,8 +95,6 @@ public class MultiplayerLobby extends JPanel {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2=(Graphics2D)g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(255,150,200,60));
-                g2.fill(new RoundRectangle2D.Float(5,5,getWidth()-4,getHeight()-4,36,36));
                 g2.setColor(WHITE); g2.fill(new RoundRectangle2D.Float(0,0,getWidth()-5,getHeight()-5,36,36));
                 g2.setColor(PINK); g2.setStroke(new BasicStroke(2.5f));
                 g2.draw(new RoundRectangle2D.Float(1,1,getWidth()-7,getHeight()-7,36,36));
@@ -103,8 +104,7 @@ public class MultiplayerLobby extends JPanel {
         dialogBox.setLayout(new BoxLayout(dialogBox, BoxLayout.Y_AXIS));
         dialogBox.setOpaque(false);
         dialogBox.setBorder(new EmptyBorder(28,36,28,36));
-        dialogBox.setPreferredSize(new Dimension(360,248));
-        JLabel icon  = lbl("💖", new Font("Segoe UI Emoji",Font.PLAIN,34), PINK);
+        dialogBox.setPreferredSize(new Dimension(360,220));
         JLabel title = lbl("ใส่ชื่อของคุณ", F24B, PINK);
         JLabel sub   = lbl("ชื่อจะแสดงในห้องแข่งขัน", F14, new Color(180,180,180));
         JTextField nameInput = styledField(PINK);
@@ -114,14 +114,19 @@ public class MultiplayerLobby extends JPanel {
         JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER,14,0));
         btnRow.setOpaque(false); btnRow.setAlignmentX(CENTER_ALIGNMENT);
         JButton cancelBtn = mkOutlineSmall("ยกเลิก");
-        JButton okBtn     = mkBtnSmall("✔  เริ่มเลย!", PINK);
+        JButton okBtn     = mkBtnSmall("เริ่มเลย!", PINK);
         JPanel overlay = new JPanel(new GridBagLayout()) {
             @Override public boolean isOpaque() { return false; }
             @Override protected void paintComponent(Graphics g) {}
         };
         Runnable doOk = () -> {
             String input = nameInput.getText().trim();
-            if (input.isEmpty()) { nameInput.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(Color.RED,2),BorderFactory.createEmptyBorder(8,10,8,10))); return; }
+            if (input.isEmpty()) {
+                nameInput.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(Color.RED,2),
+                    BorderFactory.createEmptyBorder(8,10,8,10)));
+                return;
+            }
             GameConstants.PLAYER_NAME = input;
             mainPanel.remove(overlay); mainPanel.revalidate(); mainPanel.repaint();
             startHosting();
@@ -135,7 +140,7 @@ public class MultiplayerLobby extends JPanel {
             }
         });
         btnRow.add(cancelBtn); btnRow.add(okBtn);
-        dialogBox.add(icon); dialogBox.add(gap(2)); dialogBox.add(title); dialogBox.add(gap(4));
+        dialogBox.add(title); dialogBox.add(gap(4));
         dialogBox.add(sub); dialogBox.add(gap(18)); dialogBox.add(nameInput); dialogBox.add(gap(18)); dialogBox.add(btnRow);
         overlay.add(dialogBox);
         mainPanel.add(overlay); mainPanel.setComponentZOrder(overlay,0);
@@ -151,15 +156,15 @@ public class MultiplayerLobby extends JPanel {
         box.setBorder(new EmptyBorder(30,40,30,40));
         JLabel title = lbl("ห้องแข่งขัน", F30B, PINK);
         hostDisplay  = lbl("หัวห้อง: -", F18B, PINK);
-        // IP card
-        hostIPLabel = new JLabel("กำลังเริ่ม...");
+        hostIPLabel  = new JLabel("กำลังเริ่ม...");
         hostIPLabel.setFont(new Font("Consolas",Font.BOLD,18));
         hostIPLabel.setForeground(new Color(25,130,25));
-        JButton copyBtn = new JButton("📋 คัดลอก"){
+
+        JButton copyBtn = new JButton("คัดลอก"){
             @Override protected void paintComponent(Graphics g){
                 Graphics2D g2=(Graphics2D)g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
-                Color bg=getModel().isPressed()?new Color(100,175,100):getModel().isRollover()?new Color(80,165,80):new Color(110,185,110);
+                Color bg=getModel().isPressed()?new Color(100,175,100):new Color(110,185,110);
                 g2.setColor(bg); g2.fill(new RoundRectangle2D.Float(0,0,getWidth(),getHeight(),14,14)); g2.dispose(); super.paintComponent(g);
             }
         };
@@ -170,9 +175,10 @@ public class MultiplayerLobby extends JPanel {
         copyBtn.addActionListener(e->{
             java.awt.datatransfer.StringSelection ss=new java.awt.datatransfer.StringSelection(hostIPLabel.getText());
             java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(ss,null);
-            copyBtn.setText("✔ คัดลอกแล้ว");
-            new Timer(2000,ev->{copyBtn.setText("📋 คัดลอก");((Timer)ev.getSource()).stop();}).start();
+            copyBtn.setText("คัดลอกแล้ว");
+            new Timer(2000,ev->{copyBtn.setText("คัดลอก");((Timer)ev.getSource()).stop();}).start();
         });
+
         JPanel ipCard = new JPanel(){
             @Override protected void paintComponent(Graphics g){
                 Graphics2D g2=(Graphics2D)g.create(); g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
@@ -185,17 +191,21 @@ public class MultiplayerLobby extends JPanel {
         ipCard.setBorder(new EmptyBorder(10,16,10,12)); ipCard.setMaximumSize(new Dimension(420,54));
         ipCard.setAlignmentX(CENTER_ALIGNMENT);
         ipCard.add(hostIPLabel,BorderLayout.CENTER); ipCard.add(copyBtn,BorderLayout.EAST);
+
         playerCountLabel = lbl("ผู้เล่น: 1 / 3", F18B, new Color(120,120,120));
         playerListPanel = new JPanel();
         playerListPanel.setLayout(new BoxLayout(playerListPanel,BoxLayout.Y_AXIS)); playerListPanel.setOpaque(false);
         JScrollPane scroll=new JScrollPane(playerListPanel);
         scroll.setBorder(BorderFactory.createLineBorder(new Color(255,182,193),2,true));
-        scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setPreferredSize(new Dimension(420,160));
-        startGameBtn = mkBtn("▶  เริ่มเกม!", PINK);
+        scroll.setOpaque(false); scroll.getViewport().setOpaque(false); scroll.setPreferredSize(new Dimension(420,140));
+
+        startGameBtn = mkBtn("เริ่มเกม!", PINK);
         startGameBtn.setEnabled(false);
         startGameBtn.addActionListener(e->startGameAsHost());
-        JButton cancelBtn = mkOutline("✕  ปิดห้อง");
+
+        JButton cancelBtn = mkOutline("ปิดห้อง");
         cancelBtn.addActionListener(e->{ resetAll(); goMain(); });
+
         box.add(title); box.add(gap(8)); box.add(hostDisplay); box.add(gap(18));
         box.add(smallLbl("แชร์ IP นี้ให้เพื่อนเชื่อมต่อ:")); box.add(gap(6));
         box.add(ipCard); box.add(gap(16));
@@ -274,19 +284,26 @@ public class MultiplayerLobby extends JPanel {
         show("LEADERBOARD");
     }
 
+    // ── Host Logic ─────────────────────────────────────────
     private void startHosting() {
         String name=GameConstants.PLAYER_NAME; if(name==null||name.isEmpty()) name="Host";
         hostName=name; resetAll();
         hostDisplay.setText("หัวห้อง: "+name);
         playerNames.clear(); playerNames.add(name);
         refreshPlayerList(); playerCountLabel.setText("ผู้เล่น: 1 / 3"); show("HOST");
-        server=new GameServer(GameServer.DEFAULT_PORT); server.setHostName(name);
+
+        server=new GameServer(0);
+        server.setHostName(name);
         server.setListener(new GameServer.ServerListener(){
-            @Override public void onServerStarted(String ip,int port){ SwingUtilities.invokeLater(()->hostIPLabel.setText(ip+":"+port)); }
+            @Override public void onServerStarted(String ip,int port){
+                SwingUtilities.invokeLater(()->hostIPLabel.setText(ip+":"+port));
+            }
             @Override public void onPlayerJoined(String pName,int total){
                 SwingUtilities.invokeLater(()->{
+                    if(pName.startsWith("__READY__:")) return;
                     if(!playerNames.contains(pName)) playerNames.add(pName);
-                    playerCountLabel.setText("ผู้เล่น: "+Math.min(total,3)+" / 3");
+                    int cnt=Math.min(playerNames.size(),3);
+                    playerCountLabel.setText("ผู้เล่น: "+cnt+" / 3");
                     refreshPlayerList();
                     if(playerNames.size()>1) startGameBtn.setEnabled(true);
                 });
@@ -294,14 +311,14 @@ public class MultiplayerLobby extends JPanel {
             @Override public void onPlayerLeft(String pName,int total){
                 SwingUtilities.invokeLater(()->{
                     playerNames.remove(pName);
-                    playerCountLabel.setText("ผู้เล่น: "+Math.min(total,3)+" / 3");
+                    playerCountLabel.setText("ผู้เล่น: "+Math.min(playerNames.size(),3)+" / 3");
                     refreshPlayerList();
                     if(playerNames.size()<=1) startGameBtn.setEnabled(false);
                 });
             }
             @Override public void onScoreReceived(String name,int score){}
             @Override public void onAllPlayersFinished(Map<String,Integer> finalScores){
-                finalScores.put(GameConstants.PLAYER_NAME,model.Relation.getInstance().getAffection("Ahri"));
+                finalScores.put(GameConstants.PLAYER_NAME,Relation.getInstance().getAffection("Ahri"));
                 SwingUtilities.invokeLater(()->showLeaderboard(finalScores));
             }
             @Override public void onServerError(String msg){
@@ -309,6 +326,33 @@ public class MultiplayerLobby extends JPanel {
                     JOptionPane.showMessageDialog(MultiplayerLobby.this,msg,"ข้อผิดพลาด",JOptionPane.ERROR_MESSAGE);
                     resetAll(); goMain();
                 });
+            }
+            @Override public void onPhaseRead(String scene,int sec,int total){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostPhaseRead(scene,sec,total); });
+            }
+            @Override public void onPhaseChoice(String scene,int sec,int total){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostPhaseChoice(scene,sec,total); });
+            }
+            @Override public void onForceNext(String scene){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostForceNext(scene); });
+            }
+            @Override public void onTimerSync(int t){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostTimerSync(t); });
+            }
+            @Override public void onReadyCount(int ready,int total){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostReadyCount(ready,total); });
+            }
+            // ✅ 1 param ตาม GameServer.ServerListener
+            @Override public void onChoiceAlert(String scene){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostChoiceAlert(scene); });
+            }
+            // ✅ countdown
+            @Override public void onCountdown(int n){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostCountdown(n); });
+            }
+            // ✅ 2 params ตาม GameServer.ServerListener
+            @Override public void onRandomChoice(String scene,int choiceIndex){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostRandomChoice(scene,choiceIndex); });
             }
         });
         server.start();
@@ -320,7 +364,7 @@ public class MultiplayerLobby extends JPanel {
         if(!ipPort.contains(":")){setJoinStatus("รูปแบบ IP:Port เช่น 26.1.2.3:45621",Color.RED);return;}
         String[] parts=ipPort.split(":"); String ip=parts[0].trim(); int port;
         try{port=Integer.parseInt(parts[1].trim());}catch(NumberFormatException ex){setJoinStatus("Port ไม่ถูกต้อง",Color.RED);return;}
-        GameConstants.PLAYER_NAME=name; model.Relation.getInstance().resetAll();
+        GameConstants.PLAYER_NAME=name; Relation.getInstance().resetAll();
         connectBtn.setEnabled(false); setJoinStatus("กำลังเชื่อมต่อ...",new Color(80,80,200));
         if(client!=null){client.disconnect();client=null;}
         client=new GameClient(name);
@@ -336,11 +380,15 @@ public class MultiplayerLobby extends JPanel {
                     refreshWaitingList();
                 });
             }
-            @Override public void onGameStart(int readSeconds){ SwingUtilities.invokeLater(()->loadGameAndPlay(false,readSeconds)); }
+            @Override public void onGameStart(int readSeconds){
+                SwingUtilities.invokeLater(()->loadGameAndPlay(false,readSeconds));
+            }
             @Override public void onPlayerJoined(String p,int t){}
             @Override public void onPlayerLeft(String p,int t){}
             @Override public void onScoreUpdate(String p,int s){}
-            @Override public void onLeaderboard(Map<String,Integer> scores){ SwingUtilities.invokeLater(()->showLeaderboard(scores)); }
+            @Override public void onLeaderboard(Map<String,Integer> scores){
+                SwingUtilities.invokeLater(()->showLeaderboard(scores));
+            }
             @Override public void onChatMessage(String sender,String message){}
             @Override public void onDisconnected(String reason){
                 SwingUtilities.invokeLater(()->{
@@ -353,57 +401,100 @@ public class MultiplayerLobby extends JPanel {
                     setJoinStatus(message,Color.RED); connectBtn.setEnabled(true); connectBtn.setText("เชื่อมต่อ");
                 });
             }
+            @Override public void onPhaseRead(String scene,int sec,int total){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostPhaseRead(scene,sec,total); });
+            }
+            @Override public void onPhaseChoice(String scene,int sec,int total){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostPhaseChoice(scene,sec,total); });
+            }
+            @Override public void onForceNext(String scene){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostForceNext(scene); });
+            }
+            @Override public void onTimerSync(int t){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostTimerSync(t); });
+            }
+            @Override public void onReadyCount(int ready,int total){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostReadyCount(ready,total); });
+            }
+            // ✅ 1 param
+            @Override public void onChoiceAlert(String scene){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostChoiceAlert(scene); });
+            }
+            // ✅ countdown
+            @Override public void onCountdown(int n){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostCountdown(n); });
+            }
+            // ✅ 2 params
+            @Override public void onRandomChoice(String scene,int choiceIndex){
+                SwingUtilities.invokeLater(()->{ if(activeMPScene!=null) activeMPScene.onHostRandomChoice(scene,choiceIndex); });
+            }
         });
         client.connect(ip,port);
     }
 
     private void startGameAsHost() {
         server.lockRoom();
-        int readSec=30;
-        server.setExpectedPlayers(Math.min(server.getPlayerCount()+1,3));
-        server.broadcast("START_GAME:"+readSec);
-        loadGameAndPlay(true,readSec);
+        int readSec = GameServer.READ_SECONDS;
+        int totalPlayers = Math.min(playerNames.size(), 3);
+        server.setExpectedPlayers(totalPlayers);
+        server.broadcast("START_GAME:" + readSec);
+        loadGameAndPlay(true, readSec);
     }
 
-    // ========== ใช้ PlaySceneMP — ไม่แตะ PlaySceneMain ==========
     private void loadGameAndPlay(boolean asHost, int readSeconds) {
         Relation.getInstance().resetAll();
         UI_Components.RelationUI.getInstance().updateAllScores();
-        PlaySceneMP mpScene=findOrCreateMPScene();
-        mpScene.startMPGame(asHost?server:null, asHost?null:client, readSeconds);
-        String myName=GameConstants.PLAYER_NAME.isEmpty()?"Player":GameConstants.PLAYER_NAME;
-        if(asHost){
-            mpScene.setOnGameFinished(()->server.receiveHostScore(myName,Relation.getInstance().getAffection("Ahri")));
+
+        activeMPScene = findOrCreateMPScene();
+        activeMPScene.startMPGame(asHost ? server : null, asHost ? null : client);
+
+        String myName = GameConstants.PLAYER_NAME.isEmpty() ? "Player" : GameConstants.PLAYER_NAME;
+        if (asHost) {
+            activeMPScene.setOnGameFinished(() ->
+                server.receiveHostScore(myName, Relation.getInstance().getAffection("Ahri")));
         } else {
-            mpScene.setOnGameFinished(()->{ if(client!=null) client.sendScore(Relation.getInstance().getAffection("Ahri")); });
+            activeMPScene.setOnGameFinished(() -> {
+                if (client != null) client.sendScore(Relation.getInstance().getAffection("Ahri"));
+            });
         }
-        Main.cardLayout.show(Main.mainContainer,"PLAY_SCENE_MP");
+
+        Main.cardLayout.show(Main.mainContainer, "PLAY_SCENE_MP");
     }
 
     private PlaySceneMP findOrCreateMPScene() {
-        for(Component c:Main.mainContainer.getComponents()) if(c instanceof PlaySceneMP) return (PlaySceneMP)c;
-        PlaySceneMP mp=new PlaySceneMP();
-        Main.mainContainer.add(mp,"PLAY_SCENE_MP");
+        for (Component c : Main.mainContainer.getComponents())
+            if (c instanceof PlaySceneMP) return (PlaySceneMP) c;
+        PlaySceneMP mp = new PlaySceneMP();
+        Main.mainContainer.add(mp, "PLAY_SCENE_MP");
         return mp;
     }
 
     private void resetAll() {
-        if(server!=null){server.stop();server=null;}
-        if(client!=null){client.disconnect();client=null;}
-        playerNames.clear(); hostName="Host";
+        if (server != null) { server.stop(); server = null; }
+        if (client != null) { client.disconnect(); client = null; }
+        playerNames.clear();
+        hostName    = "Host";
+        activeMPScene = null;
     }
 
     private void refreshPlayerList() {
         if(playerListPanel==null) return;
         playerListPanel.removeAll(); String me=GameConstants.PLAYER_NAME;
-        for(int i=0;i<playerNames.size();i++){ String n=playerNames.get(i); playerListPanel.add(playerCard(n,n.equals(me),i==0)); playerListPanel.add(Box.createRigidArea(new Dimension(0,6))); }
+        for(int i=0;i<playerNames.size();i++){
+            String n=playerNames.get(i);
+            playerListPanel.add(playerCard(n,n.equals(me),i==0));
+            playerListPanel.add(Box.createRigidArea(new Dimension(0,6)));
+        }
         playerListPanel.revalidate(); playerListPanel.repaint();
     }
 
     private void refreshWaitingList() {
         if(waitingPlayerListPanel==null) return;
         waitingPlayerListPanel.removeAll(); String me=GameConstants.PLAYER_NAME;
-        for(String n:playerNames){ waitingPlayerListPanel.add(playerCard(n,n.equals(me),n.equals(hostName))); waitingPlayerListPanel.add(Box.createRigidArea(new Dimension(0,6))); }
+        for(String n:playerNames){
+            waitingPlayerListPanel.add(playerCard(n,n.equals(me),n.equals(hostName)));
+            waitingPlayerListPanel.add(Box.createRigidArea(new Dimension(0,6)));
+        }
         waitingPlayerListPanel.revalidate(); waitingPlayerListPanel.repaint();
     }
 
@@ -411,7 +502,7 @@ public class MultiplayerLobby extends JPanel {
         JPanel card=new JPanel(new BorderLayout(8,0)); card.setMaximumSize(new Dimension(440,46));
         card.setBackground(isMe?new Color(255,240,250):WHITE);
         card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(isHost?PINK:BLUE,2),BorderFactory.createEmptyBorder(8,14,8,14)));
-        JLabel dot=new JLabel("●"); dot.setFont(F18B); dot.setForeground(GREEN);
+        JLabel dot=new JLabel("*"); dot.setFont(F18B); dot.setForeground(GREEN);
         String clean=name.replace("(Host)","").replace("(คุณ)","").trim();
         String display=clean+(isHost?" (Host)":"")+(isMe?" (คุณ)":"");
         JLabel nameLbl=new JLabel(display); nameLbl.setFont(F18B); nameLbl.setForeground(isHost?PINK:new Color(60,100,180));
@@ -420,11 +511,28 @@ public class MultiplayerLobby extends JPanel {
     }
 
     private void goMain() { show("MAIN"); }
-    private void goJoin() { nameField.setText(""); ipField.setText(""); joinStatusLabel.setText(" "); connectBtn.setEnabled(true); connectBtn.setText("เชื่อมต่อ"); show("JOIN"); }
+    private void goJoin() {
+        nameField.setText(""); ipField.setText("");
+        joinStatusLabel.setText(" ");
+        connectBtn.setEnabled(true); connectBtn.setText("เชื่อมต่อ");
+        show("JOIN");
+    }
     private void show(String card) { ((CardLayout)getLayout()).show(this,card); }
     private void setJoinStatus(String msg,Color c) { joinStatusLabel.setText(msg); joinStatusLabel.setForeground(c); }
 
-    private JPanel roundBox(int w,int h){ JPanel p=new JPanel(){@Override protected void paintComponent(Graphics g){Graphics2D g2=(Graphics2D)g.create();g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g2.setColor(WHITE);g2.fill(new RoundRectangle2D.Float(0,0,getWidth(),getHeight(),40,40));g2.setColor(PINK);g2.setStroke(new BasicStroke(2.5f));g2.draw(new RoundRectangle2D.Float(1,1,getWidth()-2,getHeight()-2,40,40));g2.dispose();}};p.setPreferredSize(new Dimension(w,h));return p; }
+    private JPanel roundBox(int w,int h){
+        JPanel p=new JPanel(){
+            @Override protected void paintComponent(Graphics g){
+                Graphics2D g2=(Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(WHITE); g2.fill(new RoundRectangle2D.Float(0,0,getWidth(),getHeight(),40,40));
+                g2.setColor(PINK); g2.setStroke(new BasicStroke(2.5f));
+                g2.draw(new RoundRectangle2D.Float(1,1,getWidth()-2,getHeight()-2,40,40));
+                g2.dispose();
+            }
+        };
+        p.setPreferredSize(new Dimension(w,h)); return p;
+    }
     private JButton mkBtn(String t,Color bg){JButton b=new JButton(t);b.setFont(F18B);b.setBackground(bg);b.setForeground(WHITE);b.setBorder(BorderFactory.createEmptyBorder(11,24,11,24));b.setFocusPainted(false);b.setAlignmentX(CENTER_ALIGNMENT);b.setMaximumSize(new Dimension(330,50));b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));return b;}
     private JButton mkBtnSmall(String t,Color bg){JButton b=new JButton(t);b.setFont(F18B);b.setBackground(bg);b.setForeground(WHITE);b.setBorder(BorderFactory.createEmptyBorder(9,20,9,20));b.setFocusPainted(false);b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));return b;}
     private JButton mkOutline(String t){JButton b=new JButton(t);b.setFont(F18B);b.setBackground(WHITE);b.setForeground(PINK);b.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(PINK,2),BorderFactory.createEmptyBorder(7,18,7,18)));b.setFocusPainted(false);b.setAlignmentX(CENTER_ALIGNMENT);b.setMaximumSize(new Dimension(330,48));b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));return b;}

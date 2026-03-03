@@ -17,13 +17,14 @@ import java.awt.*;
 import java.awt.event.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Random;
 
 public class PlaySceneMP extends JPanel {
 
     private final Map<String, Object[][]> storyMap = new HashMap<>();
     private Object[][] currentScene;
-    private String     sceneName  = "MP_INTRO";
-    private int        sceneIndex = 0;
+    private String     sceneName     = "MP_INTRO";
+    private int        sceneIndex    = 0;
     private Runnable   onGameFinished;
 
     private String  currentBG      = "";
@@ -32,7 +33,10 @@ public class PlaySceneMP extends JPanel {
     private String  fullText       = "";
     private int     charIndex      = 0;
     private boolean isChoiceMode   = false;
-    private Object[][] pendingChoices = null;
+    private Object[][] pendingChoices  = null;
+    private boolean sentSceneReady = false;
+    private boolean hasChosen         = false;
+    private boolean forceNextPending  = false;  // รอให้ random เสร็จก่อน
 
     private JLabel              bgLayer;
     private CharacterSprite     characterLayer;
@@ -42,13 +46,13 @@ public class PlaySceneMP extends JPanel {
     private Timer               typeTimer;
     private MultiplayerTimerBar timerBar;
 
-    private final SoundManager  soundManager  = new SoundManager();
-    private EffectManager       effectManager;
+    private final SoundManager soundManager  = new SoundManager();
+    private EffectManager      effectManager;
 
-    private GameServer mpServer       = null;
-    private GameClient mpClient       = null;
-    private int        mpReadSeconds  = 30;
-    private int        mpTotalPlayers = 2;
+    private GameServer mpServer = null;
+    private GameClient mpClient = null;
+
+    private static final Random RNG = new Random();
 
     public PlaySceneMP() {
         setLayout(null);
@@ -60,45 +64,277 @@ public class PlaySceneMP extends JPanel {
         effectManager.setMultiplayerBypass(true);
 
         initStoryMap();
-        setupUIComponents();
+        setupUI();
 
         addComponentListener(new ComponentAdapter() {
-            @Override public void componentResized(ComponentEvent e) { updateLayout(); }
+            @Override public void componentResized(ComponentEvent e) { relayout(); }
             @Override public void componentShown(ComponentEvent e) {
-                updateLayout();
+                relayout();
                 if (currentScene != null && sceneIndex < currentScene.length)
                     renderLine(currentScene[sceneIndex]);
             }
         });
-
         dialogueBox.setOnNextRequested(this::onNext);
         setupKeys();
     }
 
-    // ── Public API ─────────────────────────────────────────
-    public void startMPGame(GameServer server, GameClient client, int readSec) {
-        this.mpServer       = server;
-        this.mpClient       = client;
-        this.mpReadSeconds  = (readSec > 0) ? readSec : 30;
-        this.mpTotalPlayers = (server != null) ? Math.max(server.getPlayerCount() + 1, 2) : 2;
+    // ════════════════════════════════════════════════════════
+    //  Public API
+    // ════════════════════════════════════════════════════════
+    public void startMPGame(GameServer server, GameClient client) {
+        this.mpServer = server;
+        this.mpClient = client;
 
         Relation.getInstance().resetAll();
         RelationUI.getInstance().updateAllScores();
         effectManager.stopAll();
-        effectManager.setMultiplayerBypass(true);
         timerBar.resetAndHide();
+        hasChosen = false;
+
+        if (client != null) client.setListener(buildClientListener());
 
         loadScene("MP_INTRO");
-        updateLayout();
+        relayout();
     }
 
     public void setOnGameFinished(Runnable r) { this.onGameFinished = r; }
 
-    public void onRemotePlayerReady() {
-        if (timerBar != null) SwingUtilities.invokeLater(timerBar::otherPlayerReady);
+    // ── Host callbacks ────────────────────────────────────────────────────
+    public void onHostPhaseRead(String scene, int sec, int total) {
+        timerBar.startReadPhase(scene, sec, total);
+        relayout();
     }
 
-    // ── Story Map ──────────────────────────────────────────
+    public void onHostPhaseChoice(String scene, int sec, int total) {
+        timerBar.startChoicePhase(scene, sec, total);
+        // ✅ skipToChoice ก่อน แล้วค่อย unlock
+        if (!isChoiceMode || countChoiceButtons() == 0) skipToChoice(false);
+        unlockChoiceButtons();
+        relayout();
+    }
+
+    public void onHostForceNext(String scene) {
+        if (hasChosen) return;  // ✅ random กำลัง navigate อยู่แล้ว
+        forceNextPending = true;
+        if (!isChoiceMode || countChoiceButtons() == 0) {
+            if (pendingChoices == null) skipToChoice(false);
+        }
+        if (pendingChoices != null && pendingChoices.length > 0) {
+            doRandomChoice();
+        } else {
+            doForceNext();
+        }
+    }
+
+    public void onHostTimerSync(int t) { timerBar.setTimeLeft(t); }
+
+    public void onHostReadyCount(int ready, int total) { timerBar.setReadyCount(ready, total); }
+
+    /** FIX 1: alert — แสดงบน parent ไม่ใช่บน timerBar เพื่อไม่บัง */
+    public void onHostChoiceAlert(String scene) {
+        showAlertOverlay();
+    }
+
+    /** FIX 2: countdown */
+    public void onHostCountdown(int n) {
+        timerBar.showChoiceAlertBanner(n);
+    }
+
+    /** FIX 4: random choice จาก server — server บอกว่าสุ่มให้แล้ว */
+    public void onHostRandomChoice(String scene, int choiceIndex) {
+        if (hasChosen) return;  // เลือกเองแล้ว ไม่ต้องสุ่ม
+        if (!isChoiceMode || countChoiceButtons() == 0) {
+            if (pendingChoices == null) skipToChoice(false);
+        }
+        if (pendingChoices != null && pendingChoices.length > 0) {
+            int idx = Math.min(choiceIndex, pendingChoices.length - 1);
+            doRandomChoiceAt(idx);
+            // FORCE_NEXT จะมาทีหลัง แต่ hasChosen=true แล้ว จะไม่ทำซ้ำ
+        }
+    }
+
+    // ✅ แสดง alert overlay บน panel ตัวเอง (ไม่ใช่ใน timerBar) เพื่อไม่บังเวลา
+    private JLabel alertOverlayLabel = null;
+    private void showAlertOverlay() {
+        SwingUtilities.invokeLater(() -> {
+            if (alertOverlayLabel == null) {
+                alertOverlayLabel = new JLabel("⚡  เลือกตัวเลือกได้เลย!", SwingConstants.CENTER) {
+                    @Override protected void paintComponent(Graphics g) {
+                        Graphics2D g2 = (Graphics2D) g.create();
+                        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                        g2.setColor(new Color(255, 180, 0, 220));
+                        g2.fill(new java.awt.geom.RoundRectangle2D.Float(0,0,getWidth(),getHeight(),18,18));
+                        g2.setColor(new Color(100,60,0,200));
+                        g2.setStroke(new BasicStroke(2f));
+                        g2.draw(new java.awt.geom.RoundRectangle2D.Float(1,1,getWidth()-2,getHeight()-2,18,18));
+                        g2.dispose();
+                        super.paintComponent(g);
+                    }
+                };
+                alertOverlayLabel.setFont(new Font("Tahoma", Font.BOLD, 22));
+                alertOverlayLabel.setForeground(new Color(20,10,0));
+                alertOverlayLabel.setOpaque(false);
+            }
+            // วางใต้ timerBar (y=90) ไม่ทับ
+            int w = getWidth();
+            int bw = Math.min((int)(w * 0.55f), 480);
+            int bh = 48;
+            alertOverlayLabel.setBounds((w - bw)/2, 90, bw, bh);
+            add(alertOverlayLabel);
+            setComponentZOrder(alertOverlayLabel, 0);
+            repaint();
+
+            new Timer(1600, e -> {
+                ((Timer)e.getSource()).stop();
+                remove(alertOverlayLabel);
+                repaint();
+            }).start();
+        });
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  Client Listener
+    // ════════════════════════════════════════════════════════
+    private GameClient.ClientListener buildClientListener() {
+        return new GameClient.ClientListener() {
+            @Override public void onConnected(String n) {}
+            @Override public void onPlayerListReceived(java.util.List<String> n) {}
+            @Override public void onGameStart(int s) {}
+            @Override public void onPlayerJoined(String n, int t) {}
+            @Override public void onPlayerLeft(String n, int t) {}
+            @Override public void onScoreUpdate(String n, int s) {}
+            @Override public void onLeaderboard(Map<String,Integer> sc) {}
+            @Override public void onChatMessage(String s, String m) {}
+            @Override public void onDisconnected(String r) {}
+            @Override public void onError(String m) {}
+
+            @Override public void onPhaseRead(String scene, int sec, int total) {
+                SwingUtilities.invokeLater(() -> {
+                    timerBar.startReadPhase(scene, sec, total);
+                    relayout();
+                });
+            }
+
+            @Override public void onPhaseChoice(String scene, int sec, int total) {
+                SwingUtilities.invokeLater(() -> {
+                    timerBar.startChoicePhase(scene, sec, total);
+                    unlockChoiceButtons();
+                    if (!isChoiceMode || countChoiceButtons() == 0) skipToChoice(true);
+                    relayout();
+                });
+            }
+
+            @Override public void onChoiceAlert(String scene) {
+                SwingUtilities.invokeLater(() -> showAlertOverlay());
+            }
+
+            @Override public void onCountdown(int n) {
+                SwingUtilities.invokeLater(() -> timerBar.showChoiceAlertBanner(n));
+            }
+
+            @Override public void onRandomChoice(String scene, int choiceIndex) {
+                SwingUtilities.invokeLater(() -> {
+                    if (hasChosen) return;
+                    if (!isChoiceMode || countChoiceButtons() == 0) {
+                        if (pendingChoices == null) skipToChoice(false);
+                    }
+                    if (pendingChoices != null && pendingChoices.length > 0) {
+                        int idx = Math.min(choiceIndex, pendingChoices.length - 1);
+                        doRandomChoiceAt(idx);
+                    }
+                });
+            }
+
+            // ✅ FORCE_NEXT: ถ้าไม่เลือก ให้สุ่มก่อน แล้วค่อยไป
+            //    ถ้า random กำลังทำงานอยู่ (hasChosen=true) ไม่ต้องทำอะไร
+            @Override public void onForceNext(String scene) {
+                SwingUtilities.invokeLater(() -> {
+                    if (hasChosen) return;  // random กำลัง navigate อยู่แล้ว
+                    forceNextPending = true;
+                    // ถ้ายังไม่ถึง choice line ให้ข้ามไปก่อน
+                    if (!isChoiceMode || countChoiceButtons() == 0) {
+                        if (pendingChoices == null) skipToChoice(false);
+                    }
+                    if (pendingChoices != null && pendingChoices.length > 0) {
+                        doRandomChoice();  // สุ่มแล้ว doChoice จะ navigate เอง
+                    } else {
+                        doForceNext();     // ไม่มี choice → ไปซีนต่อเลย
+                    }
+                });
+            }
+
+            @Override public void onTimerSync(int t) {
+                SwingUtilities.invokeLater(() -> timerBar.setTimeLeft(t));
+            }
+
+            @Override public void onReadyCount(int ready, int total) {
+                SwingUtilities.invokeLater(() -> timerBar.setReadyCount(ready, total));
+            }
+        };
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  Random Choice
+    // ════════════════════════════════════════════════════════
+    private void doRandomChoice() {
+        if (pendingChoices == null || pendingChoices.length == 0) return;
+        doRandomChoiceAt(RNG.nextInt(pendingChoices.length));
+    }
+
+    private void doRandomChoiceAt(int idx) {
+        if (pendingChoices == null || idx >= pendingChoices.length) return;
+        hasChosen = true;  // ✅ mark ทันทีเพื่อกัน doForceNext ที่อาจมาทีหลัง
+        Object[] chosen = pendingChoices[idx];
+        String target = (String)  chosen[1];
+        String cn     = chosen.length >= 4 ? (String)  chosen[2] : null;
+        int    cs     = chosen.length >= 4 ? (Integer) chosen[3] : 0;
+
+        flashRandomChoiceEffect(idx);
+        new Timer(600, e -> {
+            ((Timer) e.getSource()).stop();
+            forceNextPending = false;
+            doChoice(target, cn, cs);
+        }).start();
+    }
+
+    private void flashRandomChoiceEffect(int idx) {
+        int i = 0;
+        for (Component c : choiceLayer.getComponents()) {
+            if (c instanceof UI_Components.ChoiceButton) {
+                if (i == idx) {
+                    c.setBackground(new Color(255, 215, 0));
+                    c.setEnabled(true);
+                }
+                i++;
+            }
+        }
+        choiceLayer.repaint();
+    }
+
+    // ── Force Next ─────────────────────────────────────────
+    private void unlockChoiceButtons() {
+        for (Component c : choiceLayer.getComponents())
+            if (c instanceof UI_Components.ChoiceButton) c.setEnabled(true);
+        repaint();
+    }
+
+    private void doForceNext() {
+        // ✅ ถ้า random choice กำลังทำงานอยู่ ไม่ต้อง force ซ้ำ
+        if (hasChosen) return;
+        isChoiceMode      = false;
+        pendingChoices    = null;
+        sentSceneReady    = false;
+        hasChosen         = false;
+        forceNextPending  = false;
+        choiceLayer.removeAll();
+        choiceLayer.setVisible(false);
+        timerBar.resetAndHide();
+        nextScene();
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  Story Map
+    // ════════════════════════════════════════════════════════
     private void initStoryMap() {
         for (String name : StoryDataMP.SCENE_ORDER) {
             Object[][] data = StoryDataMP.getScene(name);
@@ -106,33 +342,29 @@ public class PlaySceneMP extends JPanel {
         }
     }
 
-    // ── UI Setup ───────────────────────────────────────────
-    private void setupUIComponents() {
+    // ════════════════════════════════════════════════════════
+    //  UI Setup
+    // ════════════════════════════════════════════════════════
+    private void setupUI() {
         bgLayer = new JLabel() {
             @Override protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                drawBG((Graphics2D) g);
+                super.paintComponent(g); drawBG((Graphics2D) g);
             }
         };
-
         characterLayer = new CharacterSprite("") {
             @Override protected void paintComponent(Graphics g) { drawChar((Graphics2D) g); }
         };
-
         effectLayer = new JPanel() {
             @Override protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
-                Graphics2D g2 = (Graphics2D) g.create();
+                Graphics2D g2 = (Graphics2D)g.create();
                 if (effectManager != null) effectManager.drawEffects(g2, getWidth(), getHeight());
                 g2.dispose();
             }
         };
         effectLayer.setOpaque(false);
-
-        choiceLayer = new JPanel();
-        choiceLayer.setLayout(new BoxLayout(choiceLayer, BoxLayout.Y_AXIS));
+        choiceLayer = new JPanel(null);
         choiceLayer.setOpaque(false);
-
         timerBar = new MultiplayerTimerBar();
 
         add(timerBar);
@@ -141,38 +373,10 @@ public class PlaySceneMP extends JPanel {
         add(effectLayer);
         add(characterLayer);
         add(bgLayer);
-
-        refreshZOrder();
+        fixZOrder();
     }
 
-    private void drawBG(Graphics2D g2) {
-        if (effectManager != null) g2.translate(effectManager.getShakeX(), effectManager.getShakeY());
-        if (currentBG == null || currentBG.isEmpty() || currentBG.equals("none")) return;
-        try {
-            Image img = new ImageIcon(currentBG).getImage();
-            if (img == null || img.getWidth(null) <= 0) return;
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            int pw = getWidth(), ph = getHeight();
-            double s = Math.max((double) pw / img.getWidth(null), (double) ph / img.getHeight(null)) + 0.15;
-            int dw = (int)(img.getWidth(null) * s), dh = (int)(img.getHeight(null) * s);
-            g2.drawImage(img, (pw - dw) / 2, (ph - dh) / 2, dw, dh, this);
-        } catch (Exception ignored) {}
-    }
-
-    private void drawChar(Graphics2D g2) {
-        if (effectManager != null) g2.translate(effectManager.getShakeX(), effectManager.getShakeY());
-        if (currentChar == null || currentChar.isEmpty() || currentChar.equals("none")) return;
-        try {
-            Image img = new ImageIcon(currentChar).getImage();
-            if (img == null || img.getWidth(null) <= 0) return;
-            int ph = getHeight();
-            double r = (double)(ph + 30) / img.getHeight(null);
-            int dw = (int)(img.getWidth(null) * r);
-            g2.drawImage(img, (getWidth() - dw) / 2, 0, dw, ph + 30, this);
-        } catch (Exception ignored) {}
-    }
-
-    private void refreshZOrder() {
+    private void fixZOrder() {
         try {
             setComponentZOrder(timerBar,       0);
             setComponentZOrder(choiceLayer,    1);
@@ -183,7 +387,34 @@ public class PlaySceneMP extends JPanel {
         } catch (Exception ignored) {}
     }
 
-    private void updateLayout() {
+    private void drawBG(Graphics2D g2) {
+        if (effectManager != null) g2.translate(effectManager.getShakeX(), effectManager.getShakeY());
+        if (currentBG == null || currentBG.isEmpty() || currentBG.equals("none")) return;
+        try {
+            Image img = new ImageIcon(currentBG).getImage();
+            if (img == null || img.getWidth(null) <= 0) return;
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            int pw = getWidth(), ph = getHeight();
+            double s = Math.max((double)pw/img.getWidth(null),(double)ph/img.getHeight(null)) + 0.15;
+            int dw = (int)(img.getWidth(null)*s), dh = (int)(img.getHeight(null)*s);
+            g2.drawImage(img, (pw-dw)/2, (ph-dh)/2, dw, dh, this);
+        } catch (Exception ignored) {}
+    }
+
+    private void drawChar(Graphics2D g2) {
+        if (effectManager != null) g2.translate(effectManager.getShakeX(), effectManager.getShakeY());
+        if (currentChar == null || currentChar.isEmpty() || currentChar.equals("none")) return;
+        try {
+            Image img = new ImageIcon(currentChar).getImage();
+            if (img == null || img.getWidth(null) <= 0) return;
+            int ph = getHeight();
+            double r = (double)(ph+30)/img.getHeight(null);
+            int dw = (int)(img.getWidth(null)*r);
+            g2.drawImage(img, (getWidth()-dw)/2, 0, dw, ph+30, this);
+        } catch (Exception ignored) {}
+    }
+
+    private void relayout() {
         int w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
 
@@ -191,23 +422,35 @@ public class PlaySceneMP extends JPanel {
         characterLayer.setBounds(0, 0, w, h);
         effectLayer.setBounds(0, 0, w, h);
 
-        // Timer bar — กลางบน ไม่ขึ้นกับ isVisible()
-        int tw = Math.min(460, w - 40), th = 62;
-        timerBar.setBounds((w - tw) / 2, 10, tw, th);
+        int tw = Math.min((int)(w * 0.70), 560);
+        int th = 72;
+        timerBar.setBounds((w - tw) / 2, 8, tw, th);
 
         int gw = (int)(w * 0.70);
         int gh = (int)(h * 0.25);
         int btnCount = countChoiceButtons();
         int dialogueY = (isChoiceMode && btnCount > 0)
-            ? h - gh - (btnCount * 65) - 80
-            : h - gh - 80;
-        dialogueY = Math.max(dialogueY, 80);
+            ? h - gh - (btnCount * 65) - 70
+            : h - gh - 70;
+        dialogueY = Math.max(dialogueY, th + 16);
 
         dialogueBox.moveTo(gw, gh, dialogueY);
-        choiceLayer.setBounds((w - gw) / 2, dialogueY + gh + 14, gw, Math.max(btnCount * 65, 50));
+        layoutChoiceButtons(gw, dialogueY + gh + 10);
 
-        revalidate();
-        repaint();
+        revalidate(); repaint();
+    }
+
+    private void layoutChoiceButtons(int gw, int startY) {
+        int w = getWidth();
+        int cx = (w - gw) / 2;
+        int btnH = 55, gap = 10, y = 0;
+        for (Component c : choiceLayer.getComponents()) {
+            if (c instanceof UI_Components.ChoiceButton) {
+                c.setBounds(0, y, gw, btnH);
+                y += btnH + gap;
+            }
+        }
+        choiceLayer.setBounds(cx, startY, gw, Math.max(y, 50));
     }
 
     private int countChoiceButtons() {
@@ -217,14 +460,51 @@ public class PlaySceneMP extends JPanel {
         return n;
     }
 
-    // ── Scene Logic ────────────────────────────────────────
+    // ════════════════════════════════════════════════════════
+    //  Scene Logic
+    // ════════════════════════════════════════════════════════
     private void loadScene(String name) {
         Object[][] data = storyMap.get(name);
         if (data == null) { finishGame(); return; }
         effectManager.stopAll();
-        currentScene = data;
-        sceneName    = name;
-        sceneIndex   = 0;
+
+        currentScene   = data;
+        sceneName      = name;
+        sceneIndex     = 0;
+        sentSceneReady    = false;
+        isChoiceMode      = false;
+        pendingChoices    = null;
+        hasChosen         = false;
+        forceNextPending  = false;
+        choiceLayer.removeAll();
+        choiceLayer.setVisible(false);
+
+        int total = (mpServer != null) ? mpServer.getPlayerCount() + 1 : 2;
+
+        if (mpServer != null) {
+            mpServer.startReadPhase(name);
+        } else if (mpClient != null) {
+            timerBar.startReadPhase(name, GameServer.READ_SECONDS, total);
+        } else {
+            timerBar.startLocalReadPhase(name, GameServer.READ_SECONDS, () -> {
+                SwingUtilities.invokeLater(() -> {
+                    showAlertOverlay();
+                    timerBar.startLocalChoicePhase(name, GameServer.CHOICE_SECONDS, () -> {
+                        SwingUtilities.invokeLater(() -> {
+                            if (!hasChosen && isChoiceMode && pendingChoices != null) {
+                                doRandomChoice();
+                            } else {
+                                doForceNext();
+                            }
+                        });
+                    });
+                    unlockChoiceButtons();
+                    if (!isChoiceMode || countChoiceButtons() == 0) skipToChoice(true);
+                    relayout();
+                });
+            });
+        }
+
         renderLine(currentScene[sceneIndex]);
     }
 
@@ -250,17 +530,15 @@ public class PlaySceneMP extends JPanel {
 
         if (line.length >= 3) {
             String fn = (String) line[2];
-            currentChar = (fn == null || fn.isEmpty() || fn.equals("none")) ? ""
+            currentChar = (fn==null||fn.isEmpty()||fn.equals("none")) ? ""
                 : fn.startsWith("model/") ? fn : GameConstants.CHAR_PATH + fn;
             characterLayer.updateCharacter(currentChar);
         }
-
         if (line.length >= 4) {
             String bg = (String) line[3];
-            currentBG = (bg == null || bg.isEmpty() || bg.equals("none")) ? ""
+            currentBG = (bg==null||bg.isEmpty()||bg.equals("none")) ? ""
                 : bg.startsWith("model/") ? bg : GameConstants.SCENE_PATH + bg;
         }
-
         for (int i = 4; i < line.length; i++) {
             Object slot = line[i];
             if (slot instanceof Object[][]) {
@@ -268,12 +546,11 @@ public class PlaySceneMP extends JPanel {
                 isChoiceMode   = true;
             } else if (slot instanceof String) {
                 String val = (String) slot;
-                if (val == null || val.isEmpty() || val.equalsIgnoreCase("none")) continue;
+                if (val==null||val.isEmpty()||val.equalsIgnoreCase("none")) continue;
                 String up = val.toUpperCase();
-                if (up.contains("FADE") || up.contains("WHITE") || up.contains("BLACK")
-                        || up.equals("SHAKE") || up.equals("FLASH")) {
-                    effectManager.stopAll();
-                    effectManager.play(val);
+                if (up.contains("FADE")||up.contains("WHITE")||up.contains("BLACK")
+                        ||up.equals("SHAKE")||up.equals("FLASH")) {
+                    effectManager.stopAll(); effectManager.play(val);
                 } else {
                     String path = GameConstants.SOUND_PATH + val + ".wav";
                     if (up.startsWith("BGM")) soundManager.playBGM(path);
@@ -281,109 +558,123 @@ public class PlaySceneMP extends JPanel {
                 }
             }
         }
-
         dialogueBox.setVisible(true);
-        updateLayout();
+        relayout();
         startTypewriter();
     }
 
-    // ── Show Choices ───────────────────────────────────────
-    private void showChoices(Object[][] choices) {
+    private void showChoices(Object[][] choices, boolean alreadyUnlocked) {
         if (choices == null) return;
         isChoiceMode = true;
         choiceLayer.removeAll();
-        int tw = Math.max((int)(getWidth() * 0.70), 300);
 
         for (int i = 0; i < choices.length; i++) {
-            final String targetScene = (String)  choices[i][1];
-            final String cn          = choices[i].length >= 4 ? (String)  choices[i][2] : null;
-            final int    cs          = choices[i].length >= 4 ? (Integer) choices[i][3] : 0;
-            final String text        = (String)  choices[i][0];
-            final String num         = String.valueOf(i + 1);
+            final String target = (String)  choices[i][1];
+            final String cn     = choices[i].length >= 4 ? (String)  choices[i][2] : null;
+            final int    cs     = choices[i].length >= 4 ? (Integer) choices[i][3] : 0;
+            final String text   = (String)  choices[i][0];
+            final String num    = String.valueOf(i + 1);
 
             UI_Components.ChoiceButton btn = new UI_Components.ChoiceButton(num, text, () -> {
-                if (timerBar != null && timerBar.isChoiceLocked()) return;
-                doChoice(targetScene, cn, cs);
+                if (timerBar.isChoiceLocked()) return;
+                hasChosen = true;
+                // ✅ ใช้ method ที่ถูกต้องตาม GameClient API
+                if (mpClient != null) mpClient.notifyChoiceMade(sceneName);
+                if (mpServer != null) mpServer.hostMadeChoice(sceneName);
+                doChoice(target, cn, cs);
             });
-
-            btn.setMaximumSize(new Dimension(tw, 55));
-            btn.setPreferredSize(new Dimension(tw, 55));
-            btn.setAlignmentX(Component.CENTER_ALIGNMENT);
+            btn.setEnabled(alreadyUnlocked);
             choiceLayer.add(btn);
-            if (i < choices.length - 1)
-                choiceLayer.add(Box.createRigidArea(new Dimension(0, 8)));
         }
 
-        updateLayout();
+        relayout();
         choiceLayer.setVisible(true);
-        refreshZOrder();
+        fixZOrder();
 
-        if (mpClient != null) mpClient.notifyChoiceReady();
+        if (alreadyUnlocked) unlockChoiceButtons();
 
-        String roundName = sceneName.replace("MP_", "");
-        timerBar.setRoundLabel("[ " + roundName + " ]");
-
-        int totalP = (mpServer != null) ? Math.max(mpServer.getPlayerCount() + 1, 2) : mpTotalPlayers;
-
-        // ล็อคปุ่มเฉพาะ multiplayer (totalP > 1)
-        if (totalP > 1) {
-            for (Component c : choiceLayer.getComponents())
-                if (c instanceof UI_Components.ChoiceButton) c.setEnabled(false);
+        if (!alreadyUnlocked && !sentSceneReady) {
+            sentSceneReady = true;
+            if (mpClient != null) mpClient.notifySceneReady(sceneName);
+            if (mpServer != null) mpServer.hostSceneReady(sceneName);
         }
-
-        timerBar.setOnUnlock(() -> SwingUtilities.invokeLater(() -> {
-            for (Component c : choiceLayer.getComponents())
-                if (c instanceof UI_Components.ChoiceButton) c.setEnabled(true);
-            repaint();
-        }));
-
-        timerBar.startTimer(mpReadSeconds, totalP);
-
-        if (mpServer != null) timerBar.playerReachedChoice();
     }
 
-    private void doChoice(String targetScene, String charName, int score) {
+    private void skipToChoice(boolean unlock) {
+        if (typeTimer != null) typeTimer.stop();
+        if (isChoiceMode && countChoiceButtons() > 0) {
+            if (unlock) unlockChoiceButtons();
+            return;
+        }
+        if (currentScene == null) return;
+
+        for (int i = sceneIndex; i < currentScene.length; i++) {
+            Object[] line = currentScene[i];
+            if (line == null || line.length < 2) continue;
+            for (int j = 4; j < line.length; j++) {
+                if (!(line[j] instanceof Object[][])) continue;
+                sceneIndex     = i;
+                pendingChoices = (Object[][]) line[j];
+                isChoiceMode   = true;
+                currentSpeaker = "";
+                if (line[0] != null) {
+                    String s = line[0].toString().trim();
+                    if (s.equalsIgnoreCase("PLAYER")||s.equals(GameConstants.PLAYER_NAME))
+                        currentSpeaker = GameConstants.PLAYER_NAME;
+                    else if (!s.isEmpty() && !s.equalsIgnoreCase("none"))
+                        currentSpeaker = s;
+                }
+                fullText = line[1].toString().replace("[PLAYER]", GameConstants.PLAYER_NAME);
+                dialogueBox.setText(currentSpeaker, fullText);
+                if (line.length >= 3) {
+                    String fn = (String)line[2];
+                    currentChar = (fn==null||fn.isEmpty()||fn.equals("none")) ? ""
+                        : fn.startsWith("model/") ? fn : GameConstants.CHAR_PATH+fn;
+                    characterLayer.updateCharacter(currentChar);
+                }
+                if (line.length >= 4) {
+                    String bg = (String)line[3];
+                    currentBG = (bg==null||bg.isEmpty()||bg.equals("none")) ? ""
+                        : bg.startsWith("model/") ? bg : GameConstants.SCENE_PATH+bg;
+                }
+                dialogueBox.setVisible(true);
+                showChoices(pendingChoices, unlock);
+                return;
+            }
+        }
+        nextScene();
+    }
+
+    private void doChoice(String target, String charName, int score) {
         isChoiceMode   = false;
         pendingChoices = null;
+        sentSceneReady = false;
         choiceLayer.removeAll();
         choiceLayer.setVisible(false);
-        timerBar.stopTimer();
         timerBar.resetAndHide();
 
         if (charName != null && !charName.isEmpty() && score != 0) {
             Relation.getInstance().addAffection(charName, score);
             RelationUI.getInstance().updateScore(charName);
         }
-
-        if (targetScene != null && storyMap.containsKey(targetScene)) {
-            loadScene(targetScene);
-        } else {
-            finishGame();
-        }
+        if (target != null && storyMap.containsKey(target)) loadScene(target);
+        else finishGame();
     }
 
-    // ── onNext ─────────────────────────────────────────────
     private void onNext() {
         if (typeTimer != null && typeTimer.isRunning()) {
-            typeTimer.stop();
-            charIndex = fullText.length();
-            dialogueBox.setText(currentSpeaker, fullText);
+            typeTimer.stop(); charIndex = fullText.length();
+            dialogueBox.setText(currentSpeaker, fullText); return;
+        }
+        if (isChoiceMode && countChoiceButtons() == 0 && pendingChoices != null) {
+            showChoices(pendingChoices, !timerBar.isChoiceLocked());
             return;
         }
-
-        int btnCount = countChoiceButtons();
-        if (isChoiceMode && btnCount == 0 && pendingChoices != null) {
-            showChoices(pendingChoices);
-            return;
-        }
-        if (isChoiceMode && btnCount > 0) return;
+        if (isChoiceMode && countChoiceButtons() > 0) return;
 
         sceneIndex++;
-        if (sceneIndex < currentScene.length) {
-            renderLine(currentScene[sceneIndex]);
-        } else {
-            nextScene();
-        }
+        if (sceneIndex < currentScene.length) renderLine(currentScene[sceneIndex]);
+        else nextScene();
     }
 
     private void nextScene() {
@@ -391,7 +682,7 @@ public class PlaySceneMP extends JPanel {
         if ("MP_END".equals(sceneName)) { finishGame(); return; }
         String[] order = StoryDataMP.SCENE_ORDER;
         for (int i = 0; i < order.length - 1; i++) {
-            if (order[i].equals(sceneName)) { loadScene(order[i + 1]); return; }
+            if (order[i].equals(sceneName)) { loadScene(order[i+1]); return; }
         }
         finishGame();
     }
@@ -401,7 +692,6 @@ public class PlaySceneMP extends JPanel {
         if (onGameFinished != null) onGameFinished.run();
     }
 
-    // ── Typewriter ─────────────────────────────────────────
     private void startTypewriter() {
         charIndex = 0;
         if (typeTimer != null) typeTimer.stop();
@@ -411,13 +701,12 @@ public class PlaySceneMP extends JPanel {
                 charIndex++;
                 dialogueBox.setText(currentSpeaker, fullText.substring(0, charIndex));
             } else {
-                ((Timer) e.getSource()).stop();
+                ((Timer)e.getSource()).stop();
             }
         });
         typeTimer.start();
     }
 
-    // ── Keys ───────────────────────────────────────────────
     private void setupKeys() {
         InputMap  im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         ActionMap am = getActionMap();
