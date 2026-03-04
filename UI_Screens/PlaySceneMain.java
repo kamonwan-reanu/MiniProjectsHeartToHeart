@@ -8,20 +8,30 @@ import UI_Components.PauseMenuUI;
 import UI_Components.RelationUI;
 import UI_Components.HeartHUDPanel;
 import UI_Components.MultiplayerTimerBar;
-import model.GameConstants;
-import model.GameServer;
-import model.GameClient;
-import model.SoundManager;
-import model.StoryData;
-import model.KeyConfig;
-
-import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
+import javax.swing.*;
+import model.GameClient;
+import model.GameConstants;
+import model.GameServer;
+import model.KeyConfig;
+import model.SoundManager;
+import model.StoryData;
 
 public class PlaySceneMain extends JPanel {
+
+    // ฉากที่เป็นหน้าต่างแชท
+    private static final Set<String> CHAT_SCENES = new HashSet<>(
+        Arrays.asList(
+            "SCENE_4","SCENE_7","SCENE_8","SCENE_9",
+            "SCENE_13_CHAT","SCENE_14","SCENE_15","SCENE_16"
+        )
+    );
 
     private Map<String, Object[][]> storyMap = new HashMap<>();
     private Object[][] currentSceneData;
@@ -61,7 +71,7 @@ public class PlaySceneMain extends JPanel {
     // State Flags
     private boolean isCaptionMode = false;
 
-    // ===== Multiplayer =====
+    // ===== Multiplayer Variables (เก็บไว้กัน Error ตอนเรียกใช้จาก MainMenu) =====
     private boolean multiplayerMode         = false;
     private boolean multiplayerEffectBypass = false;
     private int     mpReadSeconds           = 30;
@@ -70,10 +80,6 @@ public class PlaySceneMain extends JPanel {
     private GameClient mpClient             = null;
     private MultiplayerTimerBar timerBar;
 
-    // ===== MiniGame =====
-    private UI_Components.MemoryMiniGame currentMiniGame = null;
-
-    // ================================================================
     public PlaySceneMain(Object[][] sceneData, String charPath, String sceneName) {
         this.currentSceneData = sceneData;
         this.sceneName        = sceneName;
@@ -99,30 +105,23 @@ public class PlaySceneMain extends JPanel {
                 if (currentSceneData != null && storyIndex < currentSceneData.length)
                     updateScene(currentSceneData[storyIndex]);
                 
-                SwingUtilities.invokeLater(() -> {
-                    requestFocusInWindow();
-                });
+                SwingUtilities.invokeLater(() -> requestFocusInWindow());
             }
         });
 
         dialogueBox.setOnNextRequested(this::handleInteraction);
         setupKeyBindings();
         setupEscapeKeyListener();
-        
         setFocusable(true);
 
         this.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                handleInteraction();
-            }
+            @Override public void mousePressed(MouseEvent e) { handleInteraction(); }
         });
     }
 
     private void setupEscapeKeyListener() {
         addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
+            @Override public void keyPressed(KeyEvent e) {
                 if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                     handleEscape();
                     e.consume();
@@ -142,7 +141,7 @@ public class PlaySceneMain extends JPanel {
     }
     
     // ================================================================
-    // Multiplayer API
+    // Multiplayer API (Dummy Fallbacks for compatibility)
     // ================================================================
 
     public void setMultiplayerMode(boolean enabled, int readSeconds, GameServer server, GameClient client) {
@@ -153,19 +152,14 @@ public class PlaySceneMain extends JPanel {
         this.mpTotalPlayers   = (server != null) ? server.getPlayerCount() + 1 : 2;
 
         if (enabled) {
-            if (timerBar == null) {
-                timerBar = new MultiplayerTimerBar();
-                add(timerBar);
-            }
+            if (timerBar == null) { timerBar = new MultiplayerTimerBar(); add(timerBar); }
             timerBar.resetAndHide();
-            timerBar.setVisible(false);
-            if (heartHUD != null) heartHUD.setVisible(false); // ซ่อนหลอดหัวใจเพื่อนตอนเล่นหลายคน
+            if (heartHUD != null) heartHUD.setVisible(false); 
             refreshZOrder();
         } else {
             if (timerBar != null) timerBar.resetAndHide();
-            if (heartHUD != null) heartHUD.setVisible(true); // โชว์ตอนเล่นคนเดียว
+            if (heartHUD != null) heartHUD.setVisible(true); 
         }
-
         if (effectManager != null) effectManager.setMultiplayerBypass(enabled);
     }
 
@@ -193,19 +187,9 @@ public class PlaySceneMain extends JPanel {
             @Override public void actionPerformed(ActionEvent e) { handleInteraction(); }
         });
 
-        inputMap.put(KeyStroke.getKeyStroke(KeyConfig.getRelationUI(), 0), "relation");
-        actionMap.put("relation", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) {
-                RelationUI.getInstance().updateAllScores();
-                RelationUI.getInstance().setVisible(!RelationUI.getInstance().isVisible());
-            }
-        });
-
         inputMap.put(KeyStroke.getKeyStroke(KeyConfig.getEscape(), 0), "escape");
         actionMap.put("escape", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) {
-                handleEscape();
-            }
+            @Override public void actionPerformed(ActionEvent e) { handleEscape(); }
         });
     }
 
@@ -242,15 +226,9 @@ public class PlaySceneMain extends JPanel {
         String targetToLoad = rawTarget;
         if (!multiplayerMode) {
             targetToLoad = resolvePickToken(rawTarget);
-            if (cn != null && cs != 0) {
-                model.Relation.getInstance().addAffection(cn, cs);
-                UI_Components.RelationUI.getInstance().updateScore(cn);
-            }
-        } else {
-            if (cn != null && cs != 0) {
-                model.Relation.getInstance().addAffection(cn, cs);
-                UI_Components.RelationUI.getInstance().updateScore(cn);
-            }
+        }
+        if (cn != null && cs != 0) {
+            model.Relation.getInstance().addAffection(cn, cs);
         }
         doChoice(targetToLoad, cn, cs);
     }
@@ -296,15 +274,12 @@ public class PlaySceneMain extends JPanel {
     private void setupUIComponents() {
         bgLayer = new JLabel() {
             @Override protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                renderBackground((Graphics2D) g);
+                super.paintComponent(g); renderBackground((Graphics2D) g);
             }
         };
 
         characterLayer = new CharacterSprite(currentChar) { 
-            @Override protected void paintComponent(Graphics g) { 
-                renderCharacter((Graphics2D) g); 
-            } 
+            @Override protected void paintComponent(Graphics g) { renderCharacter((Graphics2D) g); } 
         };
 
         effectLayer = new JPanel() {
@@ -375,7 +350,6 @@ public class PlaySceneMain extends JPanel {
     private void refreshZOrder() {
         try {
             int z = 0;
-            if (currentMiniGame != null) setComponentZOrder(currentMiniGame, z++);
             if (inlineChatPanel != null) setComponentZOrder(inlineChatPanel, z++);
             if (heartHUD != null && !multiplayerMode) setComponentZOrder(heartHUD, z++);
             if (captionLabel != null) setComponentZOrder(captionLabel, z++);
@@ -398,24 +372,21 @@ public class PlaySceneMain extends JPanel {
         if (captionLabel != null) captionLabel.setBounds(0, 0, w, h);
 
         if (timerBar != null && timerBar.isVisible()) {
-            int tw = 460, th = 62;
-            timerBar.setBounds((w - tw) / 2, 8, tw, th);
+            timerBar.setBounds((w - 460) / 2, 8, 460, 62);
         }
 
         int gw = (int)(w * 0.70);
         int gh = (int)(h * 0.25);
         int btnCount = (choiceLayer.getComponentCount() + 1) / 2;
-        int dialogueY = (isChoiceMode && btnCount > 0)
-            ? h - gh - (btnCount * 65) - 100
-            : h - gh - 100;
+        int dialogueY = (isChoiceMode && btnCount > 0) ? h - gh - (btnCount * 65) - 100 : h - gh - 100;
 
         dialogueBox.moveTo(gw, gh, dialogueY);
         choiceLayer.setBounds((w - gw) / 2, dialogueY + gh + 20, gw, btnCount > 0 ? btnCount * 65 : 100);
 
-        if (currentMiniGame != null)
-            currentMiniGame.setBounds((w-500)/2, (h-400)/2, 500, 400);
-
-        if (heartHUD != null) heartHUD.setBounds(30, 30, 320, 150);
+        if (heartHUD != null) {
+            heartHUD.setBounds(30, 30, 320, 150);
+            heartHUD.repaint();
+        }
 
         revalidate(); repaint();
     }
@@ -496,11 +467,8 @@ public class PlaySceneMain extends JPanel {
             if (captionLabel != null) captionLabel.setVisible(false);
             dialogueBox.setText(currentSpeaker, "");
             
-            if (multiplayerEffectBypass) {
-                dialogueBox.setVisible(true);
-            } else {
-                dialogueBox.setVisible(!hasNewEffect);
-            }
+            if (multiplayerEffectBypass) dialogueBox.setVisible(true);
+            else dialogueBox.setVisible(!hasNewEffect);
         }
 
         updateUIStyles();
@@ -535,21 +503,6 @@ public class PlaySceneMain extends JPanel {
 
         updateUIStyles();
         choiceLayer.setVisible(true);
-
-        if (multiplayerMode && timerBar != null) {
-            if (mpClient != null) mpClient.notifyChoiceReady();
-            for (Component c : choiceLayer.getComponents()) c.setEnabled(false);
-            String roundName = "ซีน " + sceneName.replace("SCENE_", "").replace("MP", "MP");
-            timerBar.setRoundLabel(roundName);
-            timerBar.setOnUnlock(() -> SwingUtilities.invokeLater(() -> {
-                for (Component c : choiceLayer.getComponents()) c.setEnabled(true);
-                repaint();
-            }));
-            int totalP = (mpServer != null) ? mpServer.getPlayerCount() + 1 : mpTotalPlayers;
-            if (totalP < 1) totalP = 1;
-            timerBar.startTimer(mpReadSeconds, totalP);
-            if (mpServer != null) timerBar.playerReachedChoice();
-        }
     }
 
     private void doChoice(String targetScene, String charName, int score) {
@@ -558,23 +511,13 @@ public class PlaySceneMain extends JPanel {
         choiceLayer.removeAll();
         choiceLayer.setVisible(false);
         clearChoiceKeyBindings();
-        if (timerBar != null) timerBar.stopTimer();
 
-        if (!multiplayerMode) {
-            Object[][] nextScene = storyMap.get(targetScene);
-            if (nextScene != null) {
-                loadNewScene(nextScene, targetScene);
-            } else {
-                this.sceneName = targetScene; 
-                handleSceneTransition();
-            }
+        Object[][] nextScene = storyMap.get(targetScene);
+        if (nextScene != null) {
+            loadNewScene(nextScene, targetScene);
         } else {
-            Object[][] nextScene = storyMap.get(targetScene);
-            if (nextScene != null) loadNewScene(nextScene, targetScene);
-            else {
-                this.sceneName = targetScene;
-                handleSceneTransition();
-            }
+            this.sceneName = targetScene; 
+            handleSceneTransition();
         }
     }
 
@@ -598,7 +541,6 @@ public class PlaySceneMain extends JPanel {
             showChoices(pendingChoices);
             return;
         }
-
         if (isChoiceMode && btnCount > 0) return;
 
         if (isCaptionMode && captionLabel != null) {
@@ -617,11 +559,6 @@ public class PlaySceneMain extends JPanel {
     private void handleSceneTransition() {
         if (timerBar != null) timerBar.stopTimer();
 
-        if (sceneName.equals("SCENE_MP")) {
-            if (onGameFinished != null) onGameFinished.run();
-            return;
-        }
-        
         if (sceneName.equals("SCENE_13") && !multiplayerMode) {
             showInlineChat(StoryData.SCENE_13_CHAT, GameConstants.SCENE_PATH + "dating_chat.png");
             return;
@@ -631,7 +568,7 @@ public class PlaySceneMain extends JPanel {
             int num  = Integer.parseInt(sceneName.replace("SCENE_", ""));
             String nextSceneKey = "SCENE_" + (num + 1);
 
-            if (!multiplayerMode && core.Main.CHAT_SCENES.contains(nextSceneKey)) {
+            if (!multiplayerMode && CHAT_SCENES.contains(nextSceneKey)) {
                 String chatKey = "CHAT_" + (num + 1);
                 ChatScenePanel panel = core.Main.chatPanels.get(chatKey);
                 if (panel != null) panel.resetAndStart();
@@ -653,7 +590,7 @@ public class PlaySceneMain extends JPanel {
         if (nextData == null) return;
         
         boolean isChoiceOnly = (nextData.length == 1);
-        if (!isChoiceOnly && !multiplayerMode && core.Main.CHAT_SCENES.contains(newName)) {
+        if (!isChoiceOnly && !multiplayerMode && CHAT_SCENES.contains(newName)) {
             String chatKey = "CHAT_" + newName.replace("SCENE_", "");
             ChatScenePanel panel = core.Main.chatPanels.get(chatKey);
             if (panel != null) panel.resetAndStart();
@@ -680,8 +617,7 @@ public class PlaySceneMain extends JPanel {
         Timer wait = new Timer(16, null);
         wait.addActionListener(e -> {
             if (!multiplayerEffectBypass) {
-                if (effectManager != null &&
-                    (effectManager.isPlaying() || effectManager.getAlpha() > 0.3f)) return;
+                if (effectManager != null && (effectManager.isPlaying() || effectManager.getAlpha() > 0.3f)) return;
             }
             ((Timer) e.getSource()).stop();
             runTypewriter();
@@ -747,7 +683,6 @@ public class PlaySceneMain extends JPanel {
             }
             return decideEndingFinal();
         }
-
         return token;
     }
 
@@ -767,9 +702,6 @@ public class PlaySceneMain extends JPanel {
     private String decideEndingFinal() {
         String lockEnd = decideEndingIfAny();
         if (lockEnd != null) return lockEnd;
-        if (model.GameState.teerHeart == 1 && model.GameState.tianHeart == 1 && model.GameState.kirinHeart == 1) {
-            return "SCENE_TRUE_END";
-        }
         return "SCENE_TRUE_END";
     }
 
@@ -781,15 +713,11 @@ public class PlaySceneMain extends JPanel {
         if (inlineChatPanel != null) remove(inlineChatPanel);
         
         inlineChatPanel = new ChatScenePanel(chatData, bgPath, () -> {
-            Object[][] choiceOnly = new Object[][] {
-                chatData[chatData.length - 1] 
-            };
+            Object[][] choiceOnly = new Object[][] { chatData[chatData.length - 1] };
             loadNewScene(choiceOnly, "SCENE_13_CHAT");
-            
             remove(inlineChatPanel);
             inlineChatPanel = null;
-            revalidate();
-            repaint();
+            revalidate(); repaint();
         }, false);
         
         int w = getWidth(), h = getHeight();
@@ -800,23 +728,5 @@ public class PlaySceneMain extends JPanel {
         setComponentZOrder(inlineChatPanel, 0);
         revalidate(); repaint();
         inlineChatPanel.resetAndStart();
-    }
-
-    // ================================================================
-    // MiniGame
-    // ================================================================
-
-    public void startHeartMiniGame() {
-        if (currentMiniGame != null) { remove(currentMiniGame); currentMiniGame = null; }
-        currentMiniGame = new UI_Components.MemoryMiniGame(() -> {
-            remove(currentMiniGame);
-            currentMiniGame = null;
-            refreshZOrder();
-            repaint(); revalidate();
-        });
-        currentMiniGame.setBounds((getWidth()-500)/2, (getHeight()-400)/2, 500, 400);
-        add(currentMiniGame);
-        refreshZOrder();
-        repaint();
     }
 }
