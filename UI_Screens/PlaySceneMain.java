@@ -6,18 +6,18 @@ import UI_Components.EffectManager;
 import UI_Components.PauseMenuUI;
 import UI_Components.RelationUI;
 import UI_Components.MultiplayerTimerBar;
-import model.GameConstants;
-import model.GameServer;
-import model.GameClient;
-import model.SoundManager;
-import model.StoryData;
-import model.KeyConfig;
-
-import javax.swing.*;
+import UI_Components.RelationUI;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.HashMap;
 import java.util.Map;
+import javax.swing.*;
+import model.GameClient;
+import model.GameConstants;
+import model.GameServer;
+import model.KeyConfig;
+import model.SoundManager;
+import model.StoryData;
 
 public class PlaySceneMain extends JPanel {
 
@@ -61,7 +61,7 @@ public class PlaySceneMain extends JPanel {
     private MultiplayerTimerBar timerBar;
 
     // ===== MiniGame =====
-    private UI_Components.MemoryMiniGame currentMiniGame = null;
+    private JPanel activeMiniGamePanel = null;
 
     // ================================================================
     public PlaySceneMain(Object[][] sceneData, String charPath, String sceneName) {
@@ -323,8 +323,14 @@ public class PlaySceneMain extends JPanel {
     private void refreshZOrder() {
         try {
             int z = 0;
-            if (currentMiniGame != null) setComponentZOrder(currentMiniGame, z++);
-            if (timerBar != null && timerBar.isVisible()) setComponentZOrder(timerBar, z++);
+           if (activeMiniGamePanel != null) {
+                setComponentZOrder(activeMiniGamePanel, z++);
+            }
+            
+            if (timerBar != null && timerBar.isVisible()) {
+                setComponentZOrder(timerBar, z++);
+            }
+            
             setComponentZOrder(effectLayer,    z++);
             setComponentZOrder(choiceLayer,    z++);
             setComponentZOrder(dialogueBox,    z++);
@@ -356,8 +362,11 @@ public class PlaySceneMain extends JPanel {
         dialogueBox.moveTo(gw, gh, dialogueY);
         choiceLayer.setBounds((w - gw) / 2, dialogueY + gh + 20, gw, btnCount > 0 ? btnCount * 65 : 100);
 
-        if (currentMiniGame != null)
-            currentMiniGame.setBounds((w-500)/2, (h-400)/2, 500, 400);
+      if (activeMiniGamePanel != null) {
+            int gameW = 800; 
+            int gameH = 600;
+            activeMiniGamePanel.setBounds((w - gameW) / 2, (h - gameH) / 2, gameW, gameH);
+        }
 
         revalidate(); repaint();
     }
@@ -521,11 +530,27 @@ public class PlaySceneMain extends JPanel {
         if (isChoiceMode && btnCount > 0) return;
 
         storyIndex++;
-        if (storyIndex < currentSceneData.length) {
+       if (storyIndex < currentSceneData.length) {
             updateScene(currentSceneData[storyIndex]);
         } else {
-            handleSceneTransition();
+            // ✨ จุดที่ต้องแก้: เช็คชื่อฉากปัจจุบันเพื่อเลือกเปิดมินิเกมที่ถูกต้อง
+        String checkName = sceneName.trim().toUpperCase(); 
+        
+        switch (checkName) {
+            case "SCENE_1":
+                startMiniGame("MATCH"); 
+                break;
+            case "SCENE_2":
+                startMiniGame("HEART"); 
+                break;
+            case "SCENE_3":
+                startMiniGame("RPS");  
+                break;
+            default:
+                handleSceneTransition();
+                break;
         }
+    }
     }
 
     private void handleSceneTransition() {
@@ -588,17 +613,45 @@ public class PlaySceneMain extends JPanel {
         typeTimer.start();
     }
 
-    public void startHeartMiniGame() {
-        if (currentMiniGame != null) { remove(currentMiniGame); currentMiniGame = null; }
-        currentMiniGame = new UI_Components.MemoryMiniGame(() -> {
-            remove(currentMiniGame);
-            currentMiniGame = null;
-            refreshZOrder();
+    // ================================================================
+    // MiniGame
+    // ================================================================
+
+public void startMiniGame(String type) {
+        if (activeMiniGamePanel != null) return; 
+
+        dialogueBox.setVisible(false); // ซ่อนกล่องคำพูด
+
+        // 🏆 เมื่อชนะ: ไปฉากต่อไป
+        Runnable winAction = () -> {
+            remove(activeMiniGamePanel);
+            activeMiniGamePanel = null;
+            dialogueBox.setVisible(true);
+            handleSceneTransition(); 
             repaint(); revalidate();
-        });
-        currentMiniGame.setBounds((getWidth()-500)/2, (getHeight()-400)/2, 500, 400);
-        add(currentMiniGame);
-        refreshZOrder();
-        repaint();
+        };
+
+        // ❌ เมื่อแพ้: เริ่มฉากเดิมใหม่
+        Runnable failAction = () -> {
+            remove(activeMiniGamePanel);
+            activeMiniGamePanel = null;
+            loadNewScene(currentSceneData, sceneName); 
+            repaint(); revalidate();
+        };
+
+        // เลือกว่าจะดึงไฟล์มินิเกมตัวไหนจาก UI_Components มาใช้
+        switch (type) {
+            case "MATCH": activeMiniGamePanel = new UI_Components.MemoryMatchMiniGame(winAction, failAction); break;
+            case "HEART": activeMiniGamePanel = new UI_Components.HeartClickMiniGame(winAction, failAction); break;
+            case "RPS":   activeMiniGamePanel = new UI_Components.RPSMiniGame(winAction, failAction); break;
+        }
+
+        if (activeMiniGamePanel != null) {
+            int gW = 800, gH = 600;
+            activeMiniGamePanel.setBounds((getWidth() - gW) / 2, (getHeight() - gH) / 2, gW, gH);
+            add(activeMiniGamePanel);
+            setComponentZOrder(activeMiniGamePanel, 0); // ดันมาอยู่หน้าสุด
+            repaint(); revalidate();
+        }
     }
 }
