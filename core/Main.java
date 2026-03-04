@@ -2,8 +2,12 @@ package core;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.HashMap;
+import java.util.Map;
+
 import UI_Screens.*; 
-import model.StoryData;    
+import model.StoryData;
+import model.GameConstants;
 import model.SoundManager; 
 
 public class Main {
@@ -15,6 +19,17 @@ public class Main {
     public static float brightnessAlpha = 0.0f;
     public static Color overlayColor = Color.BLACK;
     private static JPanel brightnessOverlay;
+
+    // ใน Main.java เพิ่ม static map
+    public static Map<String, ChatScenePanel> chatPanels = new HashMap<>();
+
+    // Main.java - เปลี่ยนบรรทัดนี้
+    public static final java.util.Set<String> CHAT_SCENES = new java.util.HashSet<>(
+        java.util.Arrays.asList(
+            "SCENE_4","SCENE_7","SCENE_8","SCENE_9",
+            "SCENE_13_CHAT","SCENE_14","SCENE_15","SCENE_16"
+        )
+    );
 
     public static void main(String[] args) {
         // ✨ ตั้งค่าฟอนต์ภาษาไทยให้ทั้งระบบ (แก้ปัญหาสี่เหลี่ยม)
@@ -57,20 +72,86 @@ public class Main {
     }
 
     private static void setupScreens() {
-        Font titleFont = new Font("Tahoma", Font.BOLD, 80); 
-        Font menuFont = new Font("Tahoma", Font.BOLD, 24);  
+        Font titleFont   = new Font("Tahoma", Font.BOLD, 80); 
+        Font menuFont    = new Font("Tahoma", Font.BOLD, 24);  
         Font subTitleFont = new Font("Tahoma", Font.BOLD, 40);
 
         try {
             mainContainer.add(new MainMenu(titleFont, menuFont), "MENU");
             mainContainer.add(new SettingPage(subTitleFont, menuFont), "SETTING");
             mainContainer.add(new CreditPage(subTitleFont, menuFont), "CREDIT");
-            
-            // ใช้ชื่อ Key ว่า PLAY_PAGE ให้ตรงกับในเมนูนะคะ
             mainContainer.add(new PlayPage(subTitleFont), "PLAY_PAGE");
-            
+
+            model.GameState.reset();
             PlaySceneMain gameplayScene = new PlaySceneMain(StoryData.SCENE_1, null, "SCENE_1");
             mainContainer.add(gameplayScene, "PLAY_SCENE");
+
+            String chatBG = GameConstants.SCENE_PATH + "dating_chat.png";
+
+            ChatScenePanel c4 = new ChatScenePanel(StoryData.SCENE_4, chatBG, () -> {
+                for (Component comp : mainContainer.getComponents()) {
+                    if (comp instanceof PlaySceneMain) {
+                        ((PlaySceneMain) comp).loadNewScene(StoryData.SCENE_5, "SCENE_5");
+                        break;
+                    }
+                }
+                cardLayout.show(mainContainer, "PLAY_SCENE");
+            }, true);
+
+            Runnable goToHub = () -> {
+                for (Component comp : mainContainer.getComponents()) {
+                    if (comp instanceof PlaySceneMain) {
+                        ((PlaySceneMain) comp).loadNewScene(StoryData.SCENE_6, "SCENE_6");
+                        break;
+                    }
+                }
+                cardLayout.show(mainContainer, "PLAY_SCENE");
+            };
+
+            ChatScenePanel c7 = new ChatScenePanel(StoryData.SCENE_7, chatBG, goToHub, true);
+            ChatScenePanel c8 = new ChatScenePanel(StoryData.SCENE_8, chatBG, goToHub, true);
+            ChatScenePanel c9 = new ChatScenePanel(StoryData.SCENE_9, chatBG, goToHub, true);
+
+            Runnable goToScene17 = () -> {
+                for (Component comp : mainContainer.getComponents()) {
+                    if (comp instanceof PlaySceneMain) {
+                        ((PlaySceneMain) comp).loadNewScene(StoryData.SCENE_17, "SCENE_17");
+                        break;
+                    }
+                }
+                cardLayout.show(mainContainer, "PLAY_SCENE");
+            };
+
+            ChatScenePanel c13 = new ChatScenePanel(StoryData.SCENE_13_CHAT, 
+                chatBG, () -> {
+                    for (Component comp : mainContainer.getComponents()) {
+                        if (comp instanceof PlaySceneMain) {
+                            Object[][] choiceOnly = new Object[][] {
+                                StoryData.SCENE_13_CHAT[StoryData.SCENE_13_CHAT.length - 1]
+                            };
+                            ((PlaySceneMain) comp).loadNewScene(choiceOnly, "SCENE_13_CHAT");
+                            break;
+                        }
+                    }
+                    cardLayout.show(mainContainer, "PLAY_SCENE");
+                }, true);
+
+            chatPanels.put("CHAT_13_CHAT", c13);
+            mainContainer.add(c13, "CHAT_13_CHAT");
+
+            ChatScenePanel c14 = new ChatScenePanel(StoryData.SCENE_14, chatBG, goToScene17, true);
+            ChatScenePanel c15 = new ChatScenePanel(StoryData.SCENE_15, chatBG, goToScene17, true);
+            ChatScenePanel c16 = new ChatScenePanel(StoryData.SCENE_16, chatBG, goToScene17, true);
+
+            chatPanels.put("CHAT_4",  c4);  chatPanels.put("CHAT_7",  c7);
+            chatPanels.put("CHAT_8",  c8);  chatPanels.put("CHAT_9",  c9);
+            chatPanels.put("CHAT_13", c13); chatPanels.put("CHAT_14", c14);
+            chatPanels.put("CHAT_15", c15); chatPanels.put("CHAT_16", c16);
+
+            mainContainer.add(c4,  "CHAT_4");  mainContainer.add(c7,  "CHAT_7");
+            mainContainer.add(c8,  "CHAT_8");  mainContainer.add(c9,  "CHAT_9");
+            mainContainer.add(c13, "CHAT_13"); mainContainer.add(c14, "CHAT_14");
+            mainContainer.add(c15, "CHAT_15"); mainContainer.add(c16, "CHAT_16");
 
         } catch (Exception e) {
             e.printStackTrace();
