@@ -5,13 +5,14 @@ import java.net.*;
 import java.util.*;
 
 /**
- * GameClient v3 — รับ message ใหม่ทั้งหมด
+ * GameClient — รับ 2-phase timer จาก Server
  *
- * FIX 1: รับ CHOICE_ALERT → แสดง banner
- * FIX 2: รับ COUNTDOWN:n → แสดง 3-2-1
- * FIX 3: รับ FORCE_NEXT:scene → ทุกคนไปพร้อมกัน
- * FIX 4: รับ RANDOM_CHOICE:scene:idx → สุ่มให้อัตโนมัติ
- * ส่ง CHOICE_MADE:scene เมื่อผู้เล่นกดเลือก
+ * ข้อความที่รับ:
+ *   PHASE_READ:scene:sec:total    → Phase 1 อ่าน
+ *   TIMER_SYNC:t                  → update timer ทุก 1 วิ
+ *   READY_COUNT:n:total           → update ready count
+ *   PHASE_CHOICE:scene:sec:total  → Phase 2 เลือก (unlock)
+ *   FORCE_NEXT:scene              → Phase 2 หมด → ไปซีนถัดไป
  */
 public class GameClient {
 
@@ -27,21 +28,24 @@ public class GameClient {
         void onDisconnected(String reason);
         void onError(String message);
 
+        /** Phase 1: Server เริ่ม timer อ่าน */
         default void onPhaseRead(String scene, int sec, int total) {}
-        default void onPhaseChoice(String scene, int sec, int total) {}
-        default void onForceNext(String scene) {}
-        default void onTimerSync(int t) {}
-        default void onReadyCount(int ready, int total) {}
-        /** FIX 1: แสดง banner "เลือกได้เลย!" */
-        default void onChoiceAlert(String scene) {}
-        /** FIX 2: แสดงตัวเลข 3-2-1 */
+        /** countdown ก่อน choice */
         default void onCountdown(int n) {}
-        /** FIX 4: Server สุ่ม choice ให้ */
-        default void onRandomChoice(String scene, int choiceIndex) {}
+        /** Phase 2: Server unlock + เริ่ม timer */
+        default void onPhaseChoice(String scene, int sec, int total) {}
+        /** Phase 2 หมด: ข้ามซีน (targetScene = ซีนที่ต้องไป) */
+        default void onForceNext(String scene, String targetScene) {}
+        /** Server ส่งผล choice → client ไปซีนเดียวกัน */
+        default void onChoiceResult(String targetScene, String charName, int score) {}
+        /** Timer sync ทุก 1 วิ */
+        default void onTimerSync(int t) {}
+        /** Ready count */
+        default void onReadyCount(int ready, int total) {}
     }
 
     private Socket socket;
-    private PrintWriter    out;
+    private PrintWriter out;
     private BufferedReader in;
     private ClientListener listener;
     private String playerName;
@@ -84,6 +88,7 @@ public class GameClient {
             catch (NumberFormatException e) { if (listener!=null) listener.onGameStart(50); }
 
         } else if (msg.startsWith("PHASE_READ:")) {
+            // PHASE_READ:scene:sec:total
             String[] p = msg.substring(11).split(":");
             if (p.length>=3 && listener!=null) {
                 try { listener.onPhaseRead(p[0], Integer.parseInt(p[1]), Integer.parseInt(p[2])); }
@@ -91,36 +96,34 @@ public class GameClient {
             }
 
         } else if (msg.startsWith("PHASE_CHOICE:")) {
+            // PHASE_CHOICE:scene:sec:total
             String[] p = msg.substring(13).split(":");
             if (p.length>=3 && listener!=null) {
                 try { listener.onPhaseChoice(p[0], Integer.parseInt(p[1]), Integer.parseInt(p[2])); }
                 catch (NumberFormatException ignored) {}
             }
 
-        } else if (msg.startsWith("CHOICE_ALERT:")) {
-            // FIX 1
-            String scene = msg.substring(13).trim();
-            if (listener!=null) listener.onChoiceAlert(scene);
-
         } else if (msg.startsWith("COUNTDOWN:")) {
-            // FIX 2
-            try {
-                int n = Integer.parseInt(msg.substring(10).trim());
-                if (listener!=null) listener.onCountdown(n);
-            } catch (NumberFormatException ignored) {}
+            try { if (listener!=null) listener.onCountdown(Integer.parseInt(msg.substring(10).trim())); }
+            catch (NumberFormatException ignored) {}
+
+        } else if (msg.startsWith("CHOICE_RESULT:")) {
+            // CHOICE_RESULT:targetScene:charName:score
+            String rest = msg.substring(14);
+            String[] p = rest.split(":", 3);
+            String target = p.length > 0 ? p[0] : "";
+            String charN  = p.length > 1 ? p[1] : "";
+            int    sc     = 0;
+            try { if (p.length > 2) sc = Integer.parseInt(p[2]); } catch (NumberFormatException ignored) {}
+            if (listener != null) listener.onChoiceResult(target, charN, sc);
 
         } else if (msg.startsWith("FORCE_NEXT:")) {
-            // FIX 3: รับชื่อ scene ที่ต้องไป
-            String scene = msg.substring(11).trim();
-            if (listener!=null) listener.onForceNext(scene);
-
-        } else if (msg.startsWith("RANDOM_CHOICE:")) {
-            // FIX 4: สุ่ม choice ให้
-            String[] p = msg.substring(14).split(":");
-            if (p.length>=2 && listener!=null) {
-                try { listener.onRandomChoice(p[0], Integer.parseInt(p[1])); }
-                catch (NumberFormatException ignored) {}
-            }
+            // FORCE_NEXT:scene:targetScene
+            String rest = msg.substring(11);
+            int idx = rest.indexOf(":");
+            String scene  = idx>0 ? rest.substring(0,idx) : rest;
+            String target = idx>0 ? rest.substring(idx+1) : "";
+            if (listener!=null) listener.onForceNext(scene, target);
 
         } else if (msg.startsWith("TIMER_SYNC:")) {
             try { if (listener!=null) listener.onTimerSync(Integer.parseInt(msg.substring(11).trim())); }
@@ -152,8 +155,7 @@ public class GameClient {
             Map<String,Integer> scores = new LinkedHashMap<>();
             for (String e : msg.substring(12).split("\\|")) {
                 String[] kv = e.split(":");
-                if (kv.length==2) try { scores.put(kv[0],Integer.parseInt(kv[1])); }
-                    catch (NumberFormatException ignored) {}
+                if (kv.length==2) try { scores.put(kv[0],Integer.parseInt(kv[1])); } catch (NumberFormatException ignored) {}
             }
             if (listener!=null) listener.onLeaderboard(scores);
 
@@ -162,12 +164,17 @@ public class GameClient {
         }
     }
 
-    public void sendScore(int score)         { send("SCORE:" + score); }
-    public void notifySceneReady(String s)   { send("SCENE_READY:" + s); }
-    /** FIX 4: แจ้ง Server ว่าเลือกแล้ว */
-    public void notifyChoiceMade(String s)   { send("CHOICE_MADE:" + s); }
+    public void sendScore(int score)               { send("SCORE:" + score); }
+    /** แจ้ง Server ว่า navigate ไปซีนใหม่เสร็จแล้ว */
+    public void notifySceneLoaded(String scene)    { send("SCENE_LOADED:" + scene); }
+    /** ส่ง choice ของตัวเองไปให้ Server รวบรวม (รอให้ครบทุกคนก่อน broadcast) */
+    public void sendPlayerChoice(String target, String charName, int score) {
+        send("PLAYER_CHOICE:" + target + ":" + (charName != null ? charName : "") + ":" + score);
+    }
+    /** บอก Server ว่าอ่านถึง choice แล้ว */
+    public void notifySceneReady(String scene)     { send("SCENE_READY:" + scene); }
     @Deprecated
-    public void notifyChoiceReady()          { send("SCENE_READY:"); }
+    public void notifyChoiceReady()                { send("SCENE_READY:"); }
 
     public void disconnect() {
         connected = false;
@@ -175,6 +182,6 @@ public class GameClient {
     }
 
     private void send(String m) { if(out!=null) out.println(m); }
-    public boolean isConnected()   { return connected; }
-    public String  getPlayerName() { return playerName; }
+    public boolean isConnected()  { return connected; }
+    public String  getPlayerName(){ return playerName; }
 }
