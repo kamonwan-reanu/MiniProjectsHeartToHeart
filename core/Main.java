@@ -10,14 +10,13 @@ public class Main {
     public static JFrame mainFrame;
     public static CardLayout cardLayout = new CardLayout();
     public static JPanel mainContainer = new JPanel(cardLayout);
-    public static SoundManager soundManager = new SoundManager(); 
+    public static SoundManager soundManager = new SoundManager();
     
     public static float brightnessAlpha = 0.0f;
     public static Color overlayColor = Color.BLACK;
     private static JPanel brightnessOverlay;
 
     public static void main(String[] args) {
-        // ✨ ตั้งค่าฟอนต์ภาษาไทยให้ทั้งระบบ (แก้ปัญหาสี่เหลี่ยม)
         setUIFont(new Font("Tahoma", Font.PLAIN, 18));
 
         SwingUtilities.invokeLater(() -> {
@@ -44,7 +43,6 @@ public class Main {
         });
     }
 
-    // ฟังก์ชันช่วยบังคับฟอนต์ภาษาไทยให้ทุกจุด (Pop-up, ช่องพิมพ์)
     private static void setUIFont(Font font) {
         java.util.Enumeration<Object> keys = UIManager.getDefaults().keys();
         while (keys.hasMoreElements()) {
@@ -65,12 +63,13 @@ public class Main {
             mainContainer.add(new MainMenu(titleFont, menuFont), "MENU");
             mainContainer.add(new SettingPage(subTitleFont, menuFont), "SETTING");
             mainContainer.add(new CreditPage(subTitleFont, menuFont), "CREDIT");
-            
-            // ใช้ชื่อ Key ว่า PLAY_PAGE ให้ตรงกับในเมนูนะคะ
             mainContainer.add(new PlayPage(subTitleFont), "PLAY_PAGE");
             
             PlaySceneMain gameplayScene = new PlaySceneMain(StoryData.SCENE_1, null, "SCENE_1");
             mainContainer.add(gameplayScene, "PLAY_SCENE");
+
+            // ✅ เพิ่มหน้า Multiplayer
+            mainContainer.add(new MultiplayerLobby(), "MULTIPLAYER");
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -82,7 +81,6 @@ public class Main {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2d = (Graphics2D) g.create();
-                // 🛑 ส่วนที่ต้องระวัง: ถ้า brightnessAlpha = 1.0f มันจะดำสนิทจนมองไม่เห็นข้อความด้านล่าง
                 g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, brightnessAlpha));
                 g2d.setColor(overlayColor);
                 g2d.fillRect(0, 0, getWidth(), getHeight());

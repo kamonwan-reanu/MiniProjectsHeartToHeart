@@ -4,189 +4,369 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.*;
-import java.awt.geom.RoundRectangle2D;
-import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.lang.reflect.Field;
-import core.Main; 
-import model.GameConstants; 
+import java.awt.geom.*;
+import java.util.Random;
+import core.Main;
+import model.GameConstants;
 import model.Relation;
-import model.StoryData; 
+import model.StoryData;
 
 public class MainMenu extends JPanel {
-    private JLabel gameName;
-    private JPanel buttonBox;
-    private JButton[] buttons;
-    private Timer bgmLoopTimer;
 
+    private static final Color PINK        = new Color(255, 105, 180);
+    private static final Color PINK_LIGHT  = new Color(255, 182, 213);
+    private static final Color PINK_SOFT   = new Color(255, 235, 245);
+    private static final Color PINK_MED    = new Color(255, 160, 200);
+    private static final Color WHITE       = Color.WHITE;
+    private static final Color TEXT_DARK   = new Color(90, 30, 60);
+    private static final Color TEXT_EXIT   = new Color(190, 50, 80);
+    private static final Font  F_BTN       = new Font("Tahoma", Font.BOLD, 16);
+    private static final Font  F_THAI      = new Font("Tahoma", Font.PLAIN, 13);
+
+    private JLabel       gameName;
+    private JButton[]    buttons;
+    private Timer        bgmLoopTimer;
     private JLayeredPane layeredPane;
-    private JPanel mainContentPanel; 
-    private JPanel registerOverlay;
-    private JTextField inputField;
-    private JLabel warningLabel;
+    private JPanel       mainContentPanel;
+    private JPanel       registerOverlay;
+    private JTextField   inputField;
+    private JLabel       warningLabel;
+
+    private static final int N = 18;
+    private final float[] hx = new float[N], hy = new float[N], hsize = new float[N];
+    private final float[] hspd = new float[N], halpha = new float[N], hdrift = new float[N];
+    private final Random rng = new Random();
+    private boolean heartsInited = false;
+    private Timer particleTimer;
+    private JPanel bgPanel;
+
+    // ✅ input blocker panel สำหรับ fadeOut
+    private JPanel inputBlocker;
 
     public MainMenu(Font titleFont, Font menuFont) {
         setLayout(new BorderLayout());
-        setBackground(new Color(255, 230, 240));
+        setBackground(PINK_SOFT);
 
         layeredPane = new JLayeredPane();
+        layeredPane.setLayout(null);
         add(layeredPane, BorderLayout.CENTER);
 
-        // --- 1. หน้า Main Menu ปกติ (Layer 0) ---
+        bgPanel = new JPanel() {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setPaint(new GradientPaint(0,0,new Color(255,240,248),0,getHeight(),new Color(255,210,232)));
+                g2.fillRect(0,0,getWidth(),getHeight());
+                paintBlob(g2,getWidth()*0.12f,getHeight()*0.18f,200,new Color(255,170,210,50));
+                paintBlob(g2,getWidth()*0.88f,getHeight()*0.55f,170,new Color(255,140,190,40));
+                paintBlob(g2,getWidth()*0.50f,getHeight()*0.88f,150,new Color(255,200,230,55));
+                if (heartsInited) for (int i=0;i<N;i++) paintHeart(g2,i);
+                g2.dispose();
+            }
+        };
+        bgPanel.setOpaque(false);
+        layeredPane.add(bgPanel, Integer.valueOf(0));
+
         mainContentPanel = new JPanel(new BorderLayout());
         mainContentPanel.setOpaque(false);
-        
-        gameName = new JLabel("HeartToHeart", SwingConstants.CENTER);
-        gameName.setForeground(new Color(255, 105, 180));
-        mainContentPanel.add(gameName, BorderLayout.NORTH);
+        buildContent(mainContentPanel);
+        layeredPane.add(mainContentPanel, Integer.valueOf(1));
 
-        JPanel menuButtonPanel = new JPanel(new GridBagLayout());
-        menuButtonPanel.setOpaque(false);
-        
-        buttonBox = new JPanel(new GridLayout(5, 1, 0, 15)); 
-        buttonBox.setOpaque(false);
-
-        buttons = new JButton[]{ 
-            new JButton("เริ่มเกม"), new JButton("โหลดเกม"), 
-            new JButton("ตั้งค่า"), new JButton("เกี่ยวกับคนสร้าง"), 
-            new JButton("ออกจากเกม")
-        };
-
-        for (JButton btn : buttons) {
-            btn.setBackground(Color.WHITE);
-            btn.setFocusable(false);
-            btn.setBorder(BorderFactory.createLineBorder(new Color(255, 182, 193), 2));
-            buttonBox.add(btn);
-        }
-
-        buttons[0].addActionListener(e -> showRegisterUI());
-        buttons[1].addActionListener(e -> loadGame());
-        buttons[2].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "SETTING"));
-        buttons[3].addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "CREDIT"));
-        buttons[4].addActionListener(e -> showCustomExitDialog());
-
-        menuButtonPanel.add(buttonBox);
-        mainContentPanel.add(menuButtonPanel, BorderLayout.CENTER);
-        
-        // แอดปุ่มเมนูไว้เลเยอร์ล่างสุด
-        layeredPane.add(mainContentPanel, Integer.valueOf(0));
-
-        // --- 2. สร้างหน้าต่างกรอกชื่อ (Layer 300) เตรียมไว้ตั้งแต่ต้น ---
         setupRegisterOverlay();
+        setupInputBlocker();
 
-        this.addComponentListener(new ComponentAdapter() {
-            @Override
-            public void componentResized(ComponentEvent e) {
-                applyResponsiveLayout();
-            }
+        addComponentListener(new ComponentAdapter() {
+            @Override public void componentResized(ComponentEvent e) { sizeAllLayers(); applyResponsiveFont(); }
         });
 
+        particleTimer = new Timer(32, e -> { tickHearts(); bgPanel.repaint(); });
+        particleTimer.start();
         startMenuMusic();
     }
 
-    private void setupRegisterOverlay() {
-        registerOverlay = new JPanel(null);
-        registerOverlay.setOpaque(false);
-        registerOverlay.setVisible(false); // ซ่อนไว้ก่อน
+    // ✅ blocker โปร่งใส block ทุก input ใช้ตอน fadeOut
+    private void setupInputBlocker() {
+        inputBlocker = new JPanel() {
+            @Override public boolean contains(int x, int y) { return true; }
+        };
+        inputBlocker.setOpaque(false);
+        MouseAdapter block = new MouseAdapter() {};
+        inputBlocker.addMouseListener(block);
+        inputBlocker.addMouseMotionListener(block);
+        inputBlocker.setVisible(false);
+        layeredPane.add(inputBlocker, Integer.valueOf(500)); // สูงกว่าทุกอย่าง
+    }
 
-        // ตัวแผ่นใสบังจอ
-        JPanel dimmer = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                g.setColor(new Color(0, 0, 0, 150)); // สีดำโปร่งแสง
-                g.fillRect(0, 0, getWidth(), getHeight());
+    private void sizeAllLayers() {
+        int w = getWidth(), h = getHeight();
+        if (w <= 0 || h <= 0) return;
+        bgPanel.setBounds(0,0,w,h);
+        mainContentPanel.setBounds(0,0,w,h);
+        if (registerOverlay != null) {
+            registerOverlay.setBounds(0,0,w,h);
+            if (registerOverlay.getComponentCount() >= 1) {
+                int bw=500,bh=320;
+                registerOverlay.getComponent(0).setBounds((w-bw)/2,(h-bh)/2,bw,bh);
+            }
+        }
+        if (inputBlocker != null) inputBlocker.setBounds(0,0,w,h);
+        if (!heartsInited) { initHearts(w,h); heartsInited=true; }
+    }
+
+    private void applyResponsiveFont() {
+        int w=getWidth(),h=getHeight();
+        if (w<=0||h<=0||gameName==null||buttons==null) return;
+        gameName.setFont(new Font("Tahoma",Font.BOLD,Math.max(28,(int)Math.min(w*0.075f,60f))));
+        int btnW=Math.min((int)(w*0.45f),400), btnH=Math.max((int)(h*0.075f),54);
+        Font bf=new Font("Tahoma",Font.BOLD,Math.max(14,(int)Math.min(w*0.028f,18f)));
+        for (JButton btn:buttons) { btn.setMaximumSize(new Dimension(btnW,btnH)); btn.setFont(bf); }
+        mainContentPanel.setBorder(new EmptyBorder((int)(h*0.06f),Math.max((int)(w*0.22f),60),(int)(h*0.06f),Math.max((int)(w*0.22f),60)));
+        mainContentPanel.revalidate();
+    }
+
+    private void buildContent(JPanel content) {
+        JPanel titlePanel = new JPanel() {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2=(Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(255,255,255,130));
+                g2.fill(new RoundRectangle2D.Float(10,6,getWidth()-20,getHeight()-12,28,28));
+                g2.dispose();
             }
         };
-        
-        // 🛑 หัวใจสำคัญ: บล็อกเมาส์ทุกรูปแบบไม่ให้ทะลุไปโดนปุ่มด้านล่าง 🛑
-        MouseAdapter blockMouse = new MouseAdapter() {
-            @Override public void mouseClicked(MouseEvent e) { e.consume(); }
-            @Override public void mousePressed(MouseEvent e) { e.consume(); }
-            @Override public void mouseReleased(MouseEvent e) { e.consume(); }
-            @Override public void mouseEntered(MouseEvent e) { e.consume(); }
-            @Override public void mouseExited(MouseEvent e) { e.consume(); }
-            @Override public void mouseMoved(MouseEvent e) { e.consume(); }
-            @Override public void mouseDragged(MouseEvent e) { e.consume(); }
-        };
-        dimmer.addMouseListener(blockMouse);
-        dimmer.addMouseMotionListener(blockMouse);
+        titlePanel.setOpaque(false);
+        titlePanel.setLayout(new BoxLayout(titlePanel,BoxLayout.Y_AXIS));
+        titlePanel.setBorder(new EmptyBorder(18,20,16,20));
 
-        JPanel box = new JPanel(null) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2d = (Graphics2D) g.create();
-                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2d.setColor(new Color(255, 255, 255, 250));
-                g2d.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 40, 40));
-                g2d.setColor(new Color(255, 105, 180));
-                g2d.setStroke(new BasicStroke(3));
-                g2d.draw(new RoundRectangle2D.Float(0, 0, getWidth()-1, getHeight()-1, 40, 40));
-                g2d.dispose();
+        gameName = new JLabel("HeartToHeart",SwingConstants.CENTER);
+        gameName.setFont(new Font("Tahoma",Font.BOLD,54));
+        gameName.setForeground(PINK);
+        gameName.setAlignmentX(CENTER_ALIGNMENT);
+
+        JLabel subtitle = new JLabel("~ เรื่องราวของหัวใจ ~",SwingConstants.CENTER);
+        subtitle.setFont(new Font("Tahoma",Font.ITALIC,15));
+        subtitle.setForeground(PINK_MED);
+        subtitle.setAlignmentX(CENTER_ALIGNMENT);
+
+        titlePanel.add(gameName);
+        titlePanel.add(Box.createRigidArea(new Dimension(0,3)));
+        titlePanel.add(subtitle);
+
+        JPanel menuWrap=new JPanel(new GridBagLayout());
+        menuWrap.setOpaque(false);
+        JPanel col=new JPanel();
+        col.setLayout(new BoxLayout(col,BoxLayout.Y_AXIS));
+        col.setOpaque(false);
+
+        String[] labels={"เริ่มเกม","เล่นหลายคน","โหลดเกม","ตั้งค่า","เกี่ยวกับคนสร้าง","ออกจากเกม"};
+        buttons=new JButton[labels.length];
+        for (int i=0;i<labels.length;i++) {
+            buttons[i]=makeMenuBtn(labels[i], i==labels.length-1);
+            col.add(buttons[i]);
+            if (i<labels.length-1) col.add(Box.createRigidArea(new Dimension(0,10)));
+        }
+
+        buttons[0].addActionListener(e->showRegisterUI());
+        buttons[1].addActionListener(e->Main.cardLayout.show(Main.mainContainer,"MULTIPLAYER"));
+        buttons[2].addActionListener(e->openLoadScreen());
+        buttons[3].addActionListener(e->Main.cardLayout.show(Main.mainContainer,"SETTING"));
+        buttons[4].addActionListener(e->Main.cardLayout.show(Main.mainContainer,"CREDIT"));
+        buttons[5].addActionListener(e->showExitDialog());
+
+        menuWrap.add(col);
+
+        JLabel ver=new JLabel("v1.0",SwingConstants.RIGHT);
+        ver.setFont(new Font("Tahoma",Font.PLAIN,11));
+        ver.setForeground(new Color(255,150,190,140));
+        JPanel foot=new JPanel(new BorderLayout());
+        foot.setOpaque(false);
+        foot.setBorder(new EmptyBorder(0,0,6,12));
+        foot.add(ver,BorderLayout.EAST);
+
+        content.add(titlePanel,BorderLayout.NORTH);
+        content.add(menuWrap,BorderLayout.CENTER);
+        content.add(foot,BorderLayout.SOUTH);
+    }
+
+    private void openLoadScreen() {
+        UI_Components.SaveSystemUI saveUI = UI_Components.SaveSystemUI.getInstance();
+        saveUI.setOnLoadSuccess(this::stopMenuMusic);
+        saveUI.showLoad(mainContentPanel, "MENU");
+    }
+
+    private JButton makeMenuBtn(String text, boolean isExit) {
+        JButton btn = new JButton(text) {
+            private float t=0f;
+            private Timer anim;
+            {
+                anim=new Timer(14,null);
+                anim.addActionListener(ev->{
+                    boolean over=getModel().isRollover();
+                    t=over?Math.min(1f,t+0.14f):Math.max(0f,t-0.14f);
+                    repaint();
+                    if ((over&&t>=1f)||(!over&&t<=0f)) anim.stop();
+                });
+                addMouseListener(new MouseAdapter(){
+                    @Override public void mouseEntered(MouseEvent e){anim.start();}
+                    @Override public void mouseExited(MouseEvent e){anim.start();}
+                });
             }
-        };
-        box.addMouseListener(blockMouse);
-        box.addMouseMotionListener(blockMouse);
-
-        JLabel title = new JLabel("กรุณาระบุชื่อของคุณ");
-        title.setFont(new Font("Tahoma", Font.BOLD, 24));
-        title.setForeground(new Color(255, 105, 180));
-        title.setBounds(0, 30, 500, 40);
-        title.setHorizontalAlignment(SwingConstants.CENTER);
-
-        warningLabel = new JLabel("! กรุณาใส่ชื่อตัวละครก่อนเริ่มต้นการเดินทาง !");
-        warningLabel.setFont(new Font("Tahoma", Font.BOLD, 14));
-        warningLabel.setForeground(Color.RED);
-        warningLabel.setBounds(0, 75, 500, 25);
-        warningLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        warningLabel.setVisible(false);
-
-        inputField = new JTextField();
-        inputField.setFont(new Font("Tahoma", Font.PLAIN, 22));
-        inputField.setHorizontalAlignment(JTextField.CENTER);
-        inputField.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, new Color(255, 182, 193)));
-        inputField.setBounds(100, 120, 300, 45);
-
-        // กดปุ่ม ENTER เพื่อเริ่มเกม หรือ ESC เพื่อปิด
-        inputField.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                    closeRegisterOverlay();
-                } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                    startGameAction();
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2=(Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                int w=getWidth(),h=getHeight();
+                g2.setColor(new Color(200,60,110,(int)(35*t)));
+                g2.fill(new RoundRectangle2D.Float(3,4,w-4,h-2,16,16));
+                Color fill=isExit?blend(new Color(255,255,255,210),new Color(255,200,210,230),t)
+                                 :blend(new Color(255,255,255,220),PINK,t);
+                g2.setColor(fill);
+                g2.fill(new RoundRectangle2D.Float(0,0,w-3,h-3,14,14));
+                g2.setStroke(new BasicStroke(1.5f));
+                g2.setColor(isExit?new Color(220,100,130,180):PINK_LIGHT);
+                g2.draw(new RoundRectangle2D.Float(0,0,w-4,h-4,14,14));
+                if (!isExit&&t>0.05f){
+                    g2.setColor(new Color(255,255,255,(int)(180*t)));
+                    g2.fill(new RoundRectangle2D.Float(0,(h-24)/2f,4,24,3,3));
                 }
+                g2.dispose();
+                setForeground(isExit?TEXT_EXIT:(t>0.55f?WHITE:TEXT_DARK));
+                super.paintComponent(g);
+            }
+        };
+        btn.setFont(F_BTN);
+        btn.setForeground(isExit?TEXT_EXIT:TEXT_DARK);
+        btn.setHorizontalAlignment(SwingConstants.CENTER);
+        btn.setOpaque(false); btn.setContentAreaFilled(false);
+        btn.setBorderPainted(false); btn.setFocusPainted(false);
+        btn.setBorder(new EmptyBorder(13,28,13,28));
+        btn.setAlignmentX(CENTER_ALIGNMENT);
+        btn.setMaximumSize(new Dimension(400,60));
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        return btn;
+    }
+
+    private void setupRegisterOverlay() {
+        // ✅ contains() คืน true ทุกจุด → block คลิกด้านหลังทั้งหมด
+        registerOverlay = new JPanel(null) {
+            @Override public boolean contains(int x, int y) {
+                return isVisible();
+            }
+        };
+        registerOverlay.setOpaque(false);
+        registerOverlay.setVisible(false);
+
+        // ✅ block mouse ที่ overlay เอง (พื้นที่นอก box)
+        MouseAdapter dimBlock = new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e)  { e.consume(); }
+            @Override public void mousePressed(MouseEvent e)  { e.consume(); }
+            @Override public void mouseReleased(MouseEvent e) { e.consume(); }
+        };
+        registerOverlay.addMouseListener(dimBlock);
+        registerOverlay.addMouseMotionListener(dimBlock);
+
+        MouseAdapter boxBlock = new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e)  { e.consume(); }
+            @Override public void mousePressed(MouseEvent e)  { e.consume(); }
+            @Override public void mouseReleased(MouseEvent e) { e.consume(); }
+        };
+
+        JPanel box=new JPanel(null){
+            @Override protected void paintComponent(Graphics g){
+                Graphics2D g2=(Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                // dim bg นอก box
+                g2.dispose();
+                // วาด box
+                g2=(Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(220,80,140,55));
+                g2.fill(new RoundRectangle2D.Float(6,8,getWidth()-5,getHeight()-5,36,36));
+                g2.setColor(new Color(255,252,255));
+                g2.fill(new RoundRectangle2D.Float(0,0,getWidth()-6,getHeight()-6,36,36));
+                g2.setColor(PINK); g2.setStroke(new BasicStroke(2.5f));
+                g2.draw(new RoundRectangle2D.Float(1,1,getWidth()-8,getHeight()-8,36,36));
+                g2.setPaint(new GradientPaint(0,0,PINK,(getWidth()-6)*0.65f,0,new Color(255,105,180,0)));
+                g2.fillRoundRect(2,2,getWidth()-9,5,3,3);
+                g2.dispose();
+            }
+        };
+        box.addMouseListener(boxBlock);
+        box.addMouseMotionListener(boxBlock);
+
+        JLabel icon=new JLabel("♡",SwingConstants.CENTER);
+        icon.setFont(new Font("Tahoma",Font.BOLD,34)); icon.setForeground(PINK);
+        icon.setBounds(0,22,500,42);
+
+        JLabel title=new JLabel("ใส่ชื่อของคุณ",SwingConstants.CENTER);
+        title.setFont(new Font("Tahoma",Font.BOLD,24)); title.setForeground(PINK);
+        title.setBounds(0,68,500,36);
+
+        JLabel subLbl=new JLabel("ชื่อจะแสดงตลอดการผจญภัย",SwingConstants.CENTER);
+        subLbl.setFont(F_THAI); subLbl.setForeground(new Color(180,130,160));
+        subLbl.setBounds(0,106,500,22);
+
+        warningLabel=new JLabel("กรุณาใส่ชื่อก่อนเริ่มต้น",SwingConstants.CENTER);
+        warningLabel.setFont(new Font("Tahoma",Font.BOLD,13));
+        warningLabel.setForeground(new Color(210,50,80));
+        warningLabel.setBounds(0,130,500,22); warningLabel.setVisible(false);
+
+        inputField=new JTextField();
+        inputField.setFont(new Font("Tahoma",Font.PLAIN,20));
+        inputField.setHorizontalAlignment(JTextField.CENTER);
+        inputField.setBackground(new Color(255,248,252)); inputField.setForeground(TEXT_DARK);
+        inputField.setCaretColor(PINK);
+        inputField.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(PINK_LIGHT,2),BorderFactory.createEmptyBorder(6,10,6,10)));
+        inputField.setBounds(80,158,340,46);
+        inputField.addKeyListener(new KeyAdapter(){
+            @Override public void keyPressed(KeyEvent e){
+                if (e.getKeyCode()==KeyEvent.VK_ENTER) startGameAction();
+                if (e.getKeyCode()==KeyEvent.VK_ESCAPE) closeRegisterOverlay();
             }
         });
 
-        JButton confirmBtn = new JButton("เริ่มต้นการเดินทาง");
-        confirmBtn.setFont(new Font("Tahoma", Font.BOLD, 18));
-        confirmBtn.setBackground(new Color(255, 105, 180));
-        confirmBtn.setForeground(Color.WHITE);
-        confirmBtn.setFocusPainted(false);
-        confirmBtn.setBounds(150, 200, 200, 50);
-        confirmBtn.addActionListener(e -> startGameAction());
+        JButton confirmBtn=new JButton("เริ่มต้นการเดินทาง"){
+            @Override protected void paintComponent(Graphics g){
+                Graphics2D g2=(Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(getModel().isRollover()?PINK.brighter():PINK);
+                g2.fill(new RoundRectangle2D.Float(0,0,getWidth(),getHeight(),14,14));
+                g2.dispose(); super.paintComponent(g);
+            }
+        };
+        confirmBtn.setFont(new Font("Tahoma",Font.BOLD,17)); confirmBtn.setForeground(WHITE);
+        confirmBtn.setOpaque(false); confirmBtn.setContentAreaFilled(false);
+        confirmBtn.setBorderPainted(false); confirmBtn.setFocusPainted(false);
+        confirmBtn.setBorder(new EmptyBorder(10,20,10,20));
+        confirmBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        confirmBtn.setBounds(130,224,240,48);
+        confirmBtn.addActionListener(e->startGameAction());
 
-        box.add(title);
-        box.add(warningLabel); 
-        box.add(inputField);
-        box.add(confirmBtn);
-        
+        JButton cancelBtn=new JButton("< ยกเลิก");
+        cancelBtn.setFont(new Font("Tahoma",Font.PLAIN,13));
+        cancelBtn.setForeground(new Color(180,140,160));
+        cancelBtn.setOpaque(false); cancelBtn.setContentAreaFilled(false);
+        cancelBtn.setBorderPainted(false); cancelBtn.setFocusPainted(false);
+        cancelBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        cancelBtn.setBounds(185,279,130,26);
+        cancelBtn.addActionListener(e->closeRegisterOverlay());
+
+        box.add(icon); box.add(title); box.add(subLbl);
+        box.add(warningLabel); box.add(inputField);
+        box.add(confirmBtn); box.add(cancelBtn);
+
         registerOverlay.add(box);
-        registerOverlay.add(dimmer);
-
-        // วางใน Layer บนสุด 
         layeredPane.add(registerOverlay, Integer.valueOf(300));
     }
 
     private void showRegisterUI() {
-        // รีเซ็ตค่าและแสดงหน้าต่างที่ซ่อนอยู่
         inputField.setText("");
-        inputField.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, new Color(255, 182, 193)));
+        inputField.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(PINK_LIGHT,2),BorderFactory.createEmptyBorder(6,10,6,10)));
         warningLabel.setVisible(false);
-        applyResponsiveLayout(); // จัดตำแหน่งให้เป๊ะก่อนโชว์
+        sizeAllLayers();
         registerOverlay.setVisible(true);
-        inputField.requestFocusInWindow();
+        SwingUtilities.invokeLater(()->inputField.requestFocusInWindow());
     }
 
     private void closeRegisterOverlay() {
@@ -195,187 +375,120 @@ public class MainMenu extends JPanel {
     }
 
     private void startGameAction() {
-        String name = inputField.getText().trim();
+        String name=inputField.getText().trim();
         if (name.isEmpty()) {
             warningLabel.setVisible(true);
-            inputField.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Color.RED));
-            registerOverlay.repaint();
-            return; 
+            inputField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(210,50,80),2),BorderFactory.createEmptyBorder(6,10,6,10)));
+            registerOverlay.repaint(); return;
         }
-        
-        GameConstants.PLAYER_NAME = name;
+        GameConstants.PLAYER_NAME=name;
         Relation.getInstance().resetAll();
         UI_Components.RelationUI.getInstance().updateAllScores();
-        
-        for (Component comp : core.Main.mainContainer.getComponents()) {
-            if (comp instanceof UI_Screens.PlaySceneMain) {
-                ((UI_Screens.PlaySceneMain) comp).loadNewScene(StoryData.SCENE_1, "SCENE_1");
-                break;
-            }
-        }
-        
         closeRegisterOverlay();
-        startFadeOutAction();
+        for (Component c:core.Main.mainContainer.getComponents())
+            if (c instanceof PlaySceneMain) { ((PlaySceneMain)c).loadNewScene(StoryData.SCENE_1,"SCENE_1"); break; }
+        startFadeOut();
     }
 
-    private void startFadeOutAction() {
+    private void startFadeOut() {
         stopMenuMusic();
-        Timer fadeOutTimer = new Timer(20, new ActionListener() {
-            float alpha = 0.0f;
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                alpha += 0.05f;
-                if (alpha >= 1.0f) {
-                    ((Timer)e.getSource()).stop();
-                    Main.brightnessAlpha = 0.0f; 
-                    Main.repaintBrightness();
-                    Main.cardLayout.show(Main.mainContainer, "PLAY_PAGE"); 
-                } else {
-                    Main.brightnessAlpha = alpha;
-                    Main.repaintBrightness();
-                }
+        // ✅ block input ทันทีระหว่าง fade
+        if (inputBlocker != null) {
+            sizeAllLayers();
+            inputBlocker.setVisible(true);
+        }
+        final float[] alpha={0f};
+        Timer t=new Timer(20,null);
+        t.addActionListener(e->{
+            alpha[0]=Math.min(1f,alpha[0]+0.05f);
+            Main.brightnessAlpha=alpha[0]; Main.repaintBrightness();
+            if (alpha[0]>=1f) {
+                t.stop();
+                if (inputBlocker != null) inputBlocker.setVisible(false);
+                Main.brightnessAlpha=0f; Main.repaintBrightness();
+                Main.cardLayout.show(Main.mainContainer,"PLAY_PAGE");
             }
         });
-        fadeOutTimer.start();
+        t.start();
     }
 
-    private void applyResponsiveLayout() {
-        int w = getWidth(); int h = getHeight();
-        if (w <= 0 || h <= 0) return;
-
-        mainContentPanel.setBounds(0, 0, w, h);
-        
-        if (registerOverlay != null) {
-            registerOverlay.setBounds(0, 0, w, h);
-            // อัปเดตขนาดให้ dimmer และ box
-            if (registerOverlay.getComponentCount() > 1) {
-                Component box = registerOverlay.getComponent(0);
-                Component dimmer = registerOverlay.getComponent(1);
-                dimmer.setBounds(0, 0, w, h);
-                box.setBounds((w - 500) / 2, (h - 300) / 2, 500, 300);
+    private void showExitDialog() {
+        JDialog d=new JDialog(Main.mainFrame,true);
+        d.setUndecorated(true);
+        JPanel p=new JPanel(null){
+            @Override protected void paintComponent(Graphics g){
+                Graphics2D g2=(Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(255,250,253));
+                g2.fill(new RoundRectangle2D.Float(0,0,getWidth(),getHeight(),28,28));
+                g2.setColor(PINK); g2.setStroke(new BasicStroke(2.5f));
+                g2.draw(new RoundRectangle2D.Float(1,1,getWidth()-2,getHeight()-2,28,28));
+                g2.dispose();
             }
-        }
-
-        mainContentPanel.setBorder(new EmptyBorder(h / 10, w / 5, h / 10, w / 5)); 
-        float titleSize = Math.min(w * 0.08f, 65f);
-        gameName.setFont(new Font("Tahoma", Font.BOLD, (int)titleSize));
-        int btnW = Math.min((int)(w * 0.45), 400);
-        int btnH = Math.max((int)(h * 0.07), 45); 
-        float fontSize = Math.min(w * 0.035f, 20f); 
-        for (JButton btn : buttons) {
-            btn.setPreferredSize(new Dimension(btnW, btnH));
-            btn.setFont(new Font("Tahoma", Font.BOLD, (int)fontSize));
-        }
-        revalidate(); repaint();
+        };
+        p.setPreferredSize(new Dimension(360,180));
+        JLabel lbl=new JLabel("คุณต้องการออกจากเกมใช่ไหม?",SwingConstants.CENTER);
+        lbl.setFont(new Font("Tahoma",Font.BOLD,17)); lbl.setForeground(TEXT_DARK);
+        lbl.setBounds(0,38,360,30);
+        JButton yes=dialogBtn("ออกจากเกม",new Color(210,60,90),WHITE);
+        JButton no=dialogBtn("ยังอยู่ต่อ",WHITE,PINK);
+        yes.setBounds(40,104,130,42); no.setBounds(190,104,130,42);
+        yes.addActionListener(e->System.exit(0)); no.addActionListener(e->d.dispose());
+        p.add(lbl); p.add(yes); p.add(no);
+        d.add(p); d.pack(); d.setLocationRelativeTo(Main.mainFrame); d.setVisible(true);
     }
 
-    private void loadGame() {
-        try {
-            String projectPath = System.getProperty("user.dir");
-            String savePath = projectPath + File.separator + "savegame.dat";
-            
-            if (!Files.exists(Paths.get(savePath))) {
-                JOptionPane.showMessageDialog(this, 
-                    "❌ ไม่พบไฟล์บันทึกเกม", "ข้อผิดพลาด", JOptionPane.ERROR_MESSAGE);
-                return;
+    private JButton dialogBtn(String text,Color bg,Color fg){
+        JButton b=new JButton(text){
+            @Override protected void paintComponent(Graphics g){
+                Graphics2D g2=(Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(getModel().isRollover()?bg.brighter():bg);
+                g2.fill(new RoundRectangle2D.Float(0,0,getWidth(),getHeight(),12,12));
+                if (bg.equals(WHITE)){ g2.setColor(PINK_LIGHT); g2.setStroke(new BasicStroke(1.5f));
+                    g2.draw(new RoundRectangle2D.Float(0,0,getWidth()-1,getHeight()-1,12,12)); }
+                g2.dispose(); super.paintComponent(g);
             }
-            
-            String content = new String(Files.readAllBytes(Paths.get(savePath)), "UTF-8");
-            String[] lines = content.split("\n");
-            
-            int storyIndex = 0;
-            String sceneName = "SCENE_1";
-            int ahriAffection = 0;
-            String playerName = "";
-            
-            for (String line : lines) {
-                if (line.startsWith("storyIndex=")) storyIndex = Integer.parseInt(line.substring(11).trim());
-                else if (line.startsWith("sceneName=")) sceneName = line.substring(10).trim();
-                else if (line.startsWith("playerName=")) playerName = line.substring(11).trim();
-                else if (line.startsWith("ahriAffection=")) ahriAffection = Integer.parseInt(line.substring(14).trim());
-            }
-            
-            Relation.getInstance().setAffection("Ahri", ahriAffection);
-            UI_Components.RelationUI.getInstance().updateAllScores();
-            
-            if (!playerName.isEmpty()) GameConstants.PLAYER_NAME = playerName;
-            
-            UI_Screens.PlaySceneMain playScene = null;
-            for (Component comp : core.Main.mainContainer.getComponents()) {
-                if (comp instanceof UI_Screens.PlaySceneMain) {
-                    playScene = (UI_Screens.PlaySceneMain) comp;
-                    break;
-                }
-            }
-            
-            if (playScene != null) {
-                Object[][] loadedSceneData = getSceneData(sceneName);
-                if(loadedSceneData != null) {
-                    playScene.loadNewScene(loadedSceneData, sceneName);
-                    
-                    Field indexField = playScene.getClass().getDeclaredField("storyIndex");
-                    indexField.setAccessible(true);
-                    indexField.set(playScene, storyIndex);
-                    
-                    playScene.updateScene(loadedSceneData[storyIndex]);
-                    
-                    JOptionPane.showMessageDialog(this, 
-                        "✅ โหลดเกมสำเร็จ!\nซีน: " + sceneName + "\nความสัมพันธ์ Ahri: " + ahriAffection,
-                        "โหลดเกม", JOptionPane.INFORMATION_MESSAGE);
-                        
-                    stopMenuMusic();
-                    core.Main.cardLayout.show(core.Main.mainContainer, "PLAY_SCENE");
-                }
-            }
-            
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "❌ โหลดเกมล้มเหลว: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-            ex.printStackTrace();
-        }
-    }
-    
-    private Object[][] getSceneData(String sceneName) {
-        try {
-            Class<?> storyDataClass = Class.forName("model.StoryData");
-            Field sceneField = storyDataClass.getDeclaredField(sceneName);
-            sceneField.setAccessible(true);
-            return (Object[][]) sceneField.get(null);
-        } catch (Exception ex) { return null; }
-    }
-    
-    private void showCustomExitDialog() {
-        JDialog exitDialog = new JDialog(Main.mainFrame, "ยืนยัน", true);
-        exitDialog.setUndecorated(true);
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(255, 240, 245));
-        panel.setBorder(BorderFactory.createLineBorder(new Color(255, 105, 180), 3));
-        JLabel label = new JLabel("คุณต้องการออกจากเกมใช่ไหม?", SwingConstants.CENTER);
-        label.setFont(new Font("Tahoma", Font.BOLD, 16));
-        label.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
-        panel.add(label, BorderLayout.NORTH);
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 15));
-        btnPanel.setOpaque(false);
-        JButton yes = new JButton("ใช่"); JButton no = new JButton("ไม่");
-        Font thaiFont = new Font("Tahoma", Font.BOLD, 14);
-        yes.setFont(thaiFont); no.setFont(thaiFont);
-        yes.setPreferredSize(new Dimension(80, 35)); no.setPreferredSize(new Dimension(80, 35));
-        yes.setBackground(Color.WHITE); no.setBackground(Color.WHITE);
-        yes.addActionListener(e -> System.exit(0));
-        no.addActionListener(e -> exitDialog.dispose());
-        btnPanel.add(yes); btnPanel.add(no);
-        panel.add(btnPanel, BorderLayout.CENTER);
-        exitDialog.add(panel); exitDialog.pack();
-        exitDialog.setLocationRelativeTo(Main.mainFrame);
-        exitDialog.setVisible(true);
+        };
+        b.setFont(new Font("Tahoma",Font.BOLD,15)); b.setForeground(fg);
+        b.setOpaque(false); b.setContentAreaFilled(false); b.setBorderPainted(false); b.setFocusPainted(false);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        return b;
     }
 
-    private void startMenuMusic() {
-        String bgmPath = GameConstants.SOUND_PATH + "music_mainmenu.wav"; 
-        Main.soundManager.playBGM(bgmPath); 
+    private void initHearts(int w,int h){ for(int i=0;i<N;i++) resetHeart(i,w,h,true); }
+    private void resetHeart(int i,int w,int h,boolean scatter){
+        hx[i]=rng.nextInt(Math.max(w,1)); hy[i]=scatter?rng.nextInt(Math.max(h,1)):h+20;
+        hsize[i]=8+rng.nextFloat()*16f; hspd[i]=0.35f+rng.nextFloat()*0.65f;
+        halpha[i]=0.06f+rng.nextFloat()*0.14f; hdrift[i]=(rng.nextFloat()-0.5f)*0.5f;
     }
-
-    public void stopMenuMusic() {
-        if (bgmLoopTimer != null) bgmLoopTimer.stop();
-        Main.soundManager.stopBGM(); 
+    private void tickHearts(){
+        int w=getWidth(),h=getHeight(); if(w<=0||h<=0) return;
+        for(int i=0;i<N;i++){ hy[i]-=hspd[i]; hx[i]+=hdrift[i]; if(hy[i]<-30) resetHeart(i,w,h,false); }
     }
+    private void paintBlob(Graphics2D g2,float cx,float cy,float r,Color c){
+        g2.setColor(c); g2.fillOval((int)(cx-r),(int)(cy-r),(int)(r*2),(int)(r*2));
+    }
+    private void paintHeart(Graphics2D g2,int i){
+        Composite prev=g2.getComposite();
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,halpha[i]));
+        g2.setColor(PINK);
+        double s=hsize[i]/10.0,x=hx[i],y=hy[i];
+        Path2D path=new Path2D.Double();
+        path.moveTo(x,y); path.curveTo(x,y-s*3,x-s*5,y-s*3,x-s*5,y);
+        path.curveTo(x-s*5,y+s*3,x,y+s*5,x,y+s*8);
+        path.curveTo(x,y+s*5,x+s*5,y+s*3,x+s*5,y);
+        path.curveTo(x+s*5,y-s*3,x,y-s*3,x,y);
+        g2.fill(path); g2.setComposite(prev);
+    }
+    private Color blend(Color a,Color b,float t){
+        return new Color(clamp((int)(a.getRed()+(b.getRed()-a.getRed())*t)),
+            clamp((int)(a.getGreen()+(b.getGreen()-a.getGreen())*t)),
+            clamp((int)(a.getBlue()+(b.getBlue()-a.getBlue())*t)),
+            clamp((int)(a.getAlpha()+(b.getAlpha()-a.getAlpha())*t)));
+    }
+    private int clamp(int v){ return Math.max(0,Math.min(255,v)); }
+    private void startMenuMusic(){ Main.soundManager.playBGM(GameConstants.SOUND_PATH+"music_mainmenu.wav"); }
+    public void stopMenuMusic(){ if(bgmLoopTimer!=null) bgmLoopTimer.stop(); Main.soundManager.stopBGM(); }
 }

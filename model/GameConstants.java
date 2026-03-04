@@ -3,6 +3,10 @@ import java.awt.Color;
 
 public class GameConstants {
     // 🖥️ กำหนดขนาดหน้าจอมาตรฐาน
+
+    public static final String PACKET_READ_DONE = "READ_DONE:";
+    public static final String PACKET_SHOW_CHOICES = "SHOW_CHOICES:";
+    
     public static final int SCREEN_WIDTH = 1920;
     public static final int SCREEN_HEIGHT = 1080;
     

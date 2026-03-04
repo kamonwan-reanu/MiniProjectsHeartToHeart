@@ -10,22 +10,17 @@ public class SoundManager {
     private CopyOnWriteArrayList<Clip> activeSE = new CopyOnWriteArrayList<>();
     private float currentVolume = 0.5f;
     private String currentBGMPath;
-    private Timer nextLoopTimer; // ตัวแปรสำหรับคุมเวลา 10 วิ
+    private Timer nextLoopTimer;
 
     public void setVolume(float volume) {
         this.currentVolume = Math.max(0f, Math.min(1f, volume));
-        // คำนวณ dB ครั้งเดียว
-        float dB = (float) (Math.log10(currentVolume <= 0 ? 0.0001 : currentVolume) * 20.0);
+        // ✅ square root ทำให้ slider รู้สึกสม่ำเสมอตลอดช่วง
+        // เดิม log10(volume) ทำให้ครึ่งแรกเงียบมาก ครึ่งหลังดังพรวด
+        double linear = Math.sqrt(currentVolume);
+        float dB = (float) (Math.log10(linear <= 0 ? 0.0001 : linear) * 20.0);
 
-        // ✅ ปรับเสียงแบบ Real-time ไม่ต้องรอ Thread อื่น
-        if (bgmClip != null && bgmClip.isOpen()) {
-            applyGain(bgmClip, dB);
-        }
-        for (Clip clip : activeSE) {
-            if (clip.isOpen()) {
-                applyGain(clip, dB);
-            }
-        }
+        if (bgmClip != null && bgmClip.isOpen()) applyGain(bgmClip, dB);
+        for (Clip clip : activeSE) if (clip.isOpen()) applyGain(clip, dB);
     }
 
     private void applyGain(Clip clip, float dB) {
@@ -36,15 +31,12 @@ public class SoundManager {
     }
 
     public void playBGM(String path) {
-        // ถ้าเป็นเพลงเดิมที่เล่นอยู่ ไม่ต้องทำอะไร
         if (path.equals(currentBGMPath) && bgmClip != null && bgmClip.isRunning()) return;
 
         this.currentBGMPath = path;
-        if (nextLoopTimer != null) nextLoopTimer.stop(); // เคลียร์คิวเล่นเพลงเดิม
-        
+        if (nextLoopTimer != null) nextLoopTimer.stop();
         stopBGM();
-        
-        // แยกการโหลดไฟล์ออกไปทำงานข้างหลัง เพื่อไม่ให้หน้าจอ Setting ค้างตอนลาก Slider
+
         new Thread(() -> {
             try {
                 File file = new File(path);
@@ -52,18 +44,15 @@ public class SoundManager {
                 AudioInputStream ais = AudioSystem.getAudioInputStream(file);
                 bgmClip = AudioSystem.getClip();
                 bgmClip.open(ais);
-                
-                setVolume(currentVolume); // ตั้งเสียงทันทีที่เปิด
+                setVolume(currentVolume);
 
                 bgmClip.addLineListener(event -> {
                     if (event.getType() == LineEvent.Type.STOP) {
-                        // เช็คว่าจบเพลงจริงๆ (ไม่ใช่เรากดเปลี่ยนหน้าหรือกดหยุด)
                         if (bgmClip != null && event.getFramePosition() >= bgmClip.getFrameLength()) {
-                            startDelayTimer(); 
+                            startDelayTimer();
                         }
                     }
                 });
-
                 bgmClip.start();
             } catch (Exception e) { e.printStackTrace(); }
         }).start();
@@ -71,17 +60,13 @@ public class SoundManager {
 
     private void startDelayTimer() {
         if (nextLoopTimer != null) nextLoopTimer.stop();
-        // ✅ รอ 10 วินาที แล้วเริ่มเพลงใหม่
         nextLoopTimer = new Timer(10000, e -> {
-            if (currentBGMPath != null) {
-                playBGM(currentBGMPath);
-            }
+            if (currentBGMPath != null) playBGM(currentBGMPath);
         });
         nextLoopTimer.setRepeats(false);
         nextLoopTimer.start();
     }
 
-    // ✅ เพิ่ม Method สำหรับเล่น Effect เสียง (ถ้ายังไม่มีในไฟล์เดิม)
     public void playSE(String path) {
         new Thread(() -> {
             try {
@@ -90,10 +75,11 @@ public class SoundManager {
                 AudioInputStream ais = AudioSystem.getAudioInputStream(file);
                 Clip seClip = AudioSystem.getClip();
                 seClip.open(ais);
-                
-                float dB = (float) (Math.log10(currentVolume <= 0 ? 0.0001 : currentVolume) * 20.0);
+
+                double linear = Math.sqrt(currentVolume);
+                float dB = (float) (Math.log10(linear <= 0 ? 0.0001 : linear) * 20.0);
                 applyGain(seClip, dB);
-                
+
                 seClip.start();
                 activeSE.add(seClip);
                 seClip.addLineListener(e -> {
