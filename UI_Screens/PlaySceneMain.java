@@ -1,10 +1,12 @@
 package UI_Screens;
 
 import UI_Components.CharacterSprite;
+import UI_Components.ChoiceButton; 
 import UI_Components.DialogueBox;
 import UI_Components.EffectManager;
 import UI_Components.PauseMenuUI;
 import UI_Components.RelationUI;
+import UI_Components.HeartHUDPanel;
 import UI_Components.MultiplayerTimerBar;
 import model.GameConstants;
 import model.GameServer;
@@ -38,18 +40,26 @@ public class PlaySceneMain extends JPanel {
     private double bgScaleOffset = 0.0;
     private int    bgOffsetX = 0, bgOffsetY = 0;
 
-    private JLabel          bgLayer;
+    // UI Components
+    private JLabel captionLabel;
+    private JLabel bgLayer;
     private CharacterSprite characterLayer;
-    private JPanel          effectLayer;
-    private JPanel          choiceLayer;
-    private DialogueBox     dialogueBox;
-    private Timer           typeTimer;
+    private JPanel effectLayer;
+    private JPanel choiceLayer;
+    private DialogueBox dialogueBox;
+    private Timer typeTimer;
+    private HeartHUDPanel heartHUD;
+    private ChatScenePanel inlineChatPanel;
 
     private SoundManager  soundManager  = new SoundManager();
     private EffectManager effectManager;
 
+    // KeyBindings
     private InputMap  inputMap;
     private ActionMap actionMap;
+
+    // State Flags
+    private boolean isCaptionMode = false;
 
     // ===== Multiplayer =====
     private boolean multiplayerMode         = false;
@@ -89,31 +99,31 @@ public class PlaySceneMain extends JPanel {
                 if (currentSceneData != null && storyIndex < currentSceneData.length)
                     updateScene(currentSceneData[storyIndex]);
                 
-                // ✅ สำคัญมาก: ขอ focus ทุกครั้งที่แสดง
                 SwingUtilities.invokeLater(() -> {
                     requestFocusInWindow();
-                    System.out.println("PlaySceneMain requested focus: " + hasFocus());
                 });
             }
         });
 
         dialogueBox.setOnNextRequested(this::handleInteraction);
         setupKeyBindings();
-        
-        // ✅ เพิ่ม这个方法เผื่อ KeyBinding ไม่ทำงาน
         setupEscapeKeyListener();
         
         setFocusable(true);
+
+        this.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                handleInteraction();
+            }
+        });
     }
 
-    // ✅ เพิ่ม这个方法
     private void setupEscapeKeyListener() {
-        // KeyListener สำรอง
         addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
                 if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                    System.out.println("ESC pressed in PlaySceneMain KeyListener");
                     handleEscape();
                     e.consume();
                 }
@@ -121,23 +131,16 @@ public class PlaySceneMain extends JPanel {
         });
     }
 
-    // ✅ แยก method handleEscape
     private void handleEscape() {
-        System.out.println("=== handleEscape called ===");  // เพิ่ม
         PauseMenuUI pause = PauseMenuUI.getInstance();
-        System.out.println("menuVisible=" + pause.isMenuVisible());  // เพิ่ม
-
         if (pause.isMenuVisible()) {
             pause.hideMenu();
             return;
         }
-
         if (effectManager != null && effectManager.isPlaying()) return;
-
-        pause.showMenu(PlaySceneMain.this, true);
+        pause.showMenu(PlaySceneMain.this, !multiplayerMode);
     }
     
-
     // ================================================================
     // Multiplayer API
     // ================================================================
@@ -156,9 +159,11 @@ public class PlaySceneMain extends JPanel {
             }
             timerBar.resetAndHide();
             timerBar.setVisible(false);
+            if (heartHUD != null) heartHUD.setVisible(false); // ซ่อนหลอดหัวใจเพื่อนตอนเล่นหลายคน
             refreshZOrder();
         } else {
             if (timerBar != null) timerBar.resetAndHide();
+            if (heartHUD != null) heartHUD.setVisible(true); // โชว์ตอนเล่นคนเดียว
         }
 
         if (effectManager != null) effectManager.setMultiplayerBypass(enabled);
@@ -196,18 +201,9 @@ public class PlaySceneMain extends JPanel {
             }
         });
 
-        // ✅ ESC: ใช้ KeyBinding
         inputMap.put(KeyStroke.getKeyStroke(KeyConfig.getEscape(), 0), "escape");
         actionMap.put("escape", new AbstractAction() {
             @Override public void actionPerformed(ActionEvent e) {
-                System.out.println("ESC pressed in KeyBinding");
-                handleEscape();
-            }
-        });
-
-        actionMap.put("escape", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) {
-                System.out.println("ESC KeyBinding fired in PlaySceneMain");  // เพิ่มบรรทัดนี้
                 handleEscape();
             }
         });
@@ -218,15 +214,14 @@ public class PlaySceneMain extends JPanel {
         clearChoiceKeyBindings();
         int[] keys = { KeyConfig.getChoice1(), KeyConfig.getChoice2(), KeyConfig.getChoice3() };
         for (int i = 0; i < Math.min(choices.length, 3); i++) {
-            final String sc = (String) choices[i][1];
+            final String rawTarget = (String) choices[i][1];
             final String cn = (choices[i].length >= 4) ? (String)  choices[i][2] : null;
             final int    cs = (choices[i].length >= 4) ? (Integer) choices[i][3] : 0;
+            
             inputMap.put(KeyStroke.getKeyStroke(keys[i], 0), "ch" + i);
             actionMap.put("ch" + i, new AbstractAction() {
                 @Override public void actionPerformed(ActionEvent e) {
-                    if (!isChoiceMode || pendingChoices == null) return;
-                    if (multiplayerMode && timerBar != null && timerBar.isChoiceLocked()) return;
-                    doChoice(sc, cn, cs);
+                    handleChoiceClick(rawTarget, cn, cs);
                 }
             });
         }
@@ -240,6 +235,26 @@ public class PlaySceneMain extends JPanel {
         }
     }
 
+    private void handleChoiceClick(String rawTarget, String cn, int cs) {
+        if (!isChoiceMode || pendingChoices == null) return;
+        if (multiplayerMode && timerBar != null && timerBar.isChoiceLocked()) return;
+
+        String targetToLoad = rawTarget;
+        if (!multiplayerMode) {
+            targetToLoad = resolvePickToken(rawTarget);
+            if (cn != null && cs != 0) {
+                model.Relation.getInstance().addAffection(cn, cs);
+                UI_Components.RelationUI.getInstance().updateScore(cn);
+            }
+        } else {
+            if (cn != null && cs != 0) {
+                model.Relation.getInstance().addAffection(cn, cs);
+                UI_Components.RelationUI.getInstance().updateScore(cn);
+            }
+        }
+        doChoice(targetToLoad, cn, cs);
+    }
+
     // ================================================================
     // Story Map
     // ================================================================
@@ -250,7 +265,28 @@ public class PlaySceneMain extends JPanel {
         storyMap.put("SCENE_3", StoryData.SCENE_3);
         storyMap.put("SCENE_4", StoryData.SCENE_4);
         storyMap.put("SCENE_5", StoryData.SCENE_5);
-        if (StoryData.SCENE_MP != null) storyMap.put("SCENE_MP", StoryData.SCENE_MP);
+        storyMap.put("SCENE_6", StoryData.SCENE_6);   
+        storyMap.put("SCENE_7", StoryData.SCENE_7);   
+        storyMap.put("SCENE_8", StoryData.SCENE_8);   
+        storyMap.put("SCENE_9", StoryData.SCENE_9);   
+        storyMap.put("SCENE_10", StoryData.SCENE_10); 
+        storyMap.put("SCENE_11", StoryData.SCENE_11);
+        storyMap.put("SCENE_12", StoryData.SCENE_12);
+        storyMap.put("SCENE_13", StoryData.SCENE_13);
+        storyMap.put("SCENE_13_CHAT", StoryData.SCENE_13_CHAT);
+        storyMap.put("SCENE_14", StoryData.SCENE_14);
+        storyMap.put("SCENE_15", StoryData.SCENE_15);
+        storyMap.put("SCENE_16", StoryData.SCENE_16);
+        storyMap.put("SCENE_17", StoryData.SCENE_17);
+        storyMap.put("SCENE_18", StoryData.SCENE_18);
+        storyMap.put("SCENE_19", StoryData.SCENE_19);
+        storyMap.put("SCENE_20", StoryData.SCENE_20);
+        storyMap.put("SCENE_21", StoryData.SCENE_21);
+        storyMap.put("SCENE_22", StoryData.SCENE_22);
+        storyMap.put("SCENE_TEER", StoryData.SCENE_TEER_END);
+        storyMap.put("SCENE_KIRIN", StoryData.SCENE_KIRIN_END);
+        storyMap.put("SCENE_TIAN", StoryData.SCENE_TIAN_END);
+        storyMap.put("SCENE_TRUE_END", StoryData.SCENE_TRUE_END);
     }
 
     // ================================================================
@@ -264,15 +300,19 @@ public class PlaySceneMain extends JPanel {
                 renderBackground((Graphics2D) g);
             }
         };
-        characterLayer = new CharacterSprite(currentChar) {
-            @Override protected void paintComponent(Graphics g) { renderCharacter((Graphics2D) g); }
+
+        characterLayer = new CharacterSprite(currentChar) { 
+            @Override protected void paintComponent(Graphics g) { 
+                renderCharacter((Graphics2D) g); 
+            } 
         };
+
         effectLayer = new JPanel() {
             @Override protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
-                Graphics2D g2 = (Graphics2D) g.create();
-                if (effectManager != null) effectManager.drawEffects(g2, getWidth(), getHeight());
-                g2.dispose();
+                Graphics2D g2d = (Graphics2D) g.create();
+                if (effectManager != null) effectManager.drawEffects(g2d, getWidth(), getHeight());
+                g2d.dispose();
             }
         };
         effectLayer.setOpaque(false);
@@ -281,11 +321,23 @@ public class PlaySceneMain extends JPanel {
         choiceLayer.setLayout(new BoxLayout(choiceLayer, BoxLayout.Y_AXIS));
         choiceLayer.setOpaque(false);
 
-        add(choiceLayer);
-        add(dialogueBox);
-        add(effectLayer);
-        add(characterLayer);
+        heartHUD = new HeartHUDPanel();
+        heartHUD.setOpaque(false);
+
+        captionLabel = new JLabel("", SwingConstants.CENTER);
+        captionLabel.setForeground(Color.WHITE);
+        captionLabel.setFont(new Font("Tahoma", Font.PLAIN, 32));
+        captionLabel.setOpaque(false);
+        captionLabel.setVisible(false);
+        
+        add(captionLabel);
         add(bgLayer);
+        add(characterLayer);
+        add(effectLayer);
+        add(dialogueBox);
+        add(choiceLayer);
+        add(heartHUD);
+
         refreshZOrder();
     }
 
@@ -324,12 +376,15 @@ public class PlaySceneMain extends JPanel {
         try {
             int z = 0;
             if (currentMiniGame != null) setComponentZOrder(currentMiniGame, z++);
+            if (inlineChatPanel != null) setComponentZOrder(inlineChatPanel, z++);
+            if (heartHUD != null && !multiplayerMode) setComponentZOrder(heartHUD, z++);
+            if (captionLabel != null) setComponentZOrder(captionLabel, z++);
             if (timerBar != null && timerBar.isVisible()) setComponentZOrder(timerBar, z++);
-            setComponentZOrder(effectLayer,    z++);
-            setComponentZOrder(choiceLayer,    z++);
-            setComponentZOrder(dialogueBox,    z++);
+            setComponentZOrder(choiceLayer, z++);
+            setComponentZOrder(dialogueBox, z++);
+            setComponentZOrder(effectLayer, z++);
             setComponentZOrder(characterLayer, z++);
-            setComponentZOrder(bgLayer,        z);
+            setComponentZOrder(bgLayer, z);
         } catch (Exception ignored) {}
     }
 
@@ -340,6 +395,7 @@ public class PlaySceneMain extends JPanel {
         bgLayer.setBounds(0, 0, w, h);
         characterLayer.setBounds(0, 0, w, h);
         effectLayer.setBounds(0, 0, w, h);
+        if (captionLabel != null) captionLabel.setBounds(0, 0, w, h);
 
         if (timerBar != null && timerBar.isVisible()) {
             int tw = 460, th = 62;
@@ -359,6 +415,8 @@ public class PlaySceneMain extends JPanel {
         if (currentMiniGame != null)
             currentMiniGame.setBounds((w-500)/2, (h-400)/2, 500, 400);
 
+        if (heartHUD != null) heartHUD.setBounds(30, 30, 320, 150);
+
         revalidate(); repaint();
     }
 
@@ -371,10 +429,16 @@ public class PlaySceneMain extends JPanel {
 
         choiceLayer.removeAll();
         choiceLayer.setVisible(false);
-        isChoiceMode   = false;
+        isChoiceMode = false;
         pendingChoices = null;
-
         currentSpeaker = "";
+
+        boolean isCaption = false;
+        for (Object o : lineData) {
+            if ("CAPTION".equals(o)) { isCaption = true; break; }
+        }
+        isCaptionMode = isCaption;
+
         Object sp = lineData[0];
         if (sp != null) {
             String s = sp.toString().trim();
@@ -383,7 +447,6 @@ public class PlaySceneMain extends JPanel {
             else if (!s.isEmpty() && !s.equalsIgnoreCase("none"))
                 currentSpeaker = s;
         }
-        dialogueBox.setText(currentSpeaker, "");
         fullText = lineData[1].toString().replace("[PLAYER]", GameConstants.PLAYER_NAME);
 
         if (lineData.length >= 3) {
@@ -399,21 +462,21 @@ public class PlaySceneMain extends JPanel {
                 : (bg.startsWith("model/") ? bg : GameConstants.SCENE_PATH + bg);
         }
 
-        boolean hasEffect = false;
+        boolean hasNewEffect = false;
         for (int i = 4; i < lineData.length; i++) {
             if (lineData[i] instanceof Object[][]) {
                 pendingChoices = (Object[][]) lineData[i];
                 isChoiceMode   = true;
             } else if (lineData[i] instanceof String) {
                 String val = (String) lineData[i];
-                if (val == null || val.isEmpty() || val.equalsIgnoreCase("none")) continue;
+                if (val == null || val.isEmpty() || val.equalsIgnoreCase("none") || "CAPTION".equals(val)) continue;
                 String upper = val.toUpperCase();
                 if (upper.contains("FADE") || upper.contains("WHITE") || upper.contains("BLACK")
                         || upper.equals("SHAKE") || upper.equals("FLASH")) {
                     if (effectManager != null) {
                         effectManager.stopAll();
                         effectManager.play(val);
-                        hasEffect = true;
+                        hasNewEffect = true;
                     }
                 } else {
                     String path = GameConstants.SOUND_PATH + val + ".wav";
@@ -423,10 +486,21 @@ public class PlaySceneMain extends JPanel {
             }
         }
 
-        if (multiplayerEffectBypass) {
-            dialogueBox.setVisible(true);
+        if (isCaptionMode) {
+            dialogueBox.setVisible(false);
+            if (captionLabel != null) {
+                captionLabel.setText("");
+                captionLabel.setVisible(true);
+            }
         } else {
-            dialogueBox.setVisible(!hasEffect);
+            if (captionLabel != null) captionLabel.setVisible(false);
+            dialogueBox.setText(currentSpeaker, "");
+            
+            if (multiplayerEffectBypass) {
+                dialogueBox.setVisible(true);
+            } else {
+                dialogueBox.setVisible(!hasNewEffect);
+            }
         }
 
         updateUIStyles();
@@ -445,13 +519,12 @@ public class PlaySceneMain extends JPanel {
         for (int i = 0; i < choices.length; i++) {
             String num         = String.valueOf(i + 1);
             String text        = (String) choices[i][0];
-            String targetScene = (String) choices[i][1];
+            final String rawTarget = (String) choices[i][1];
             final String cn    = (choices[i].length >= 4) ? (String)  choices[i][2] : null;
             final int    cs    = (choices[i].length >= 4) ? (Integer) choices[i][3] : 0;
 
             UI_Components.ChoiceButton btn = new UI_Components.ChoiceButton(num, text, () -> {
-                if (multiplayerMode && timerBar != null && timerBar.isChoiceLocked()) return;
-                doChoice(targetScene, cn, cs);
+                handleChoiceClick(rawTarget, cn, cs);
             });
             btn.setMaximumSize(new Dimension(tw, 50));
             btn.setPreferredSize(new Dimension(tw, 50));
@@ -487,28 +560,36 @@ public class PlaySceneMain extends JPanel {
         clearChoiceKeyBindings();
         if (timerBar != null) timerBar.stopTimer();
 
-        if (charName != null && score != 0) {
-            model.Relation.getInstance().addAffection(charName, score);
-            UI_Components.RelationUI.getInstance().updateScore(charName);
-        }
-
-        Object[][] nextScene = storyMap.get(targetScene);
-        if (nextScene != null) {
-            loadNewScene(nextScene, targetScene);
+        if (!multiplayerMode) {
+            Object[][] nextScene = storyMap.get(targetScene);
+            if (nextScene != null) {
+                loadNewScene(nextScene, targetScene);
+            } else {
+                this.sceneName = targetScene; 
+                handleSceneTransition();
+            }
         } else {
-            handleSceneTransition();
+            Object[][] nextScene = storyMap.get(targetScene);
+            if (nextScene != null) loadNewScene(nextScene, targetScene);
+            else {
+                this.sceneName = targetScene;
+                handleSceneTransition();
+            }
         }
     }
 
     private void handleInteraction() {
         if (PauseMenuUI.getInstance().isMenuVisible()) return;
-
         if (!multiplayerEffectBypass && effectManager != null && effectManager.isPlaying()) return;
 
         if (typeTimer != null && typeTimer.isRunning()) {
             typeTimer.stop();
             charIndex = fullText.length();
-            dialogueBox.setText(currentSpeaker, fullText);
+            if (isCaptionMode) {
+                if (captionLabel != null) captionLabel.setText(fullText);
+            } else {
+                dialogueBox.setText(currentSpeaker, fullText);
+            }
             return;
         }
 
@@ -519,6 +600,11 @@ public class PlaySceneMain extends JPanel {
         }
 
         if (isChoiceMode && btnCount > 0) return;
+
+        if (isCaptionMode && captionLabel != null) {
+            captionLabel.setVisible(false);
+            isCaptionMode = false;
+        }
 
         storyIndex++;
         if (storyIndex < currentSceneData.length) {
@@ -535,12 +621,26 @@ public class PlaySceneMain extends JPanel {
             if (onGameFinished != null) onGameFinished.run();
             return;
         }
+        
+        if (sceneName.equals("SCENE_13") && !multiplayerMode) {
+            showInlineChat(StoryData.SCENE_13_CHAT, GameConstants.SCENE_PATH + "dating_chat.png");
+            return;
+        }
 
         try {
             int num  = Integer.parseInt(sceneName.replace("SCENE_", ""));
-            String next = "SCENE_" + (num + 1);
-            if (storyMap.containsKey(next)) {
-                loadNewScene(storyMap.get(next), next);
+            String nextSceneKey = "SCENE_" + (num + 1);
+
+            if (!multiplayerMode && core.Main.CHAT_SCENES.contains(nextSceneKey)) {
+                String chatKey = "CHAT_" + (num + 1);
+                ChatScenePanel panel = core.Main.chatPanels.get(chatKey);
+                if (panel != null) panel.resetAndStart();
+                core.Main.cardLayout.show(core.Main.mainContainer, chatKey);
+                return;
+            }
+
+            if (storyMap.containsKey(nextSceneKey)) {
+                loadNewScene(storyMap.get(nextSceneKey), nextSceneKey);
             } else {
                 if (onGameFinished != null) onGameFinished.run();
             }
@@ -551,16 +651,31 @@ public class PlaySceneMain extends JPanel {
 
     public void loadNewScene(Object[][] nextData, String newName) {
         if (nextData == null) return;
+        
+        boolean isChoiceOnly = (nextData.length == 1);
+        if (!isChoiceOnly && !multiplayerMode && core.Main.CHAT_SCENES.contains(newName)) {
+            String chatKey = "CHAT_" + newName.replace("SCENE_", "");
+            ChatScenePanel panel = core.Main.chatPanels.get(chatKey);
+            if (panel != null) panel.resetAndStart();
+            core.Main.cardLayout.show(core.Main.mainContainer, chatKey);
+            return;
+        }
+
         if (effectManager != null) effectManager.stopAll();
-        currentSceneData = nextData;
-        sceneName        = newName;
-        storyIndex       = 0;
+        this.currentSceneData = nextData;
+        this.sceneName        = newName;
+        this.storyIndex       = 0;
         updateScene(currentSceneData[storyIndex]);
     }
 
     private void startTypewriter() {
         charIndex = 0;
         if (typeTimer != null) typeTimer.stop();
+
+        if (isCaptionMode) {
+            runTypewriter();
+            return;
+        }
 
         Timer wait = new Timer(16, null);
         wait.addActionListener(e -> {
@@ -575,18 +690,121 @@ public class PlaySceneMain extends JPanel {
     }
 
     private void runTypewriter() {
-        dialogueBox.setVisible(true);
+        if (!isCaptionMode) dialogueBox.setVisible(true);
+
         if (typeTimer != null) typeTimer.stop();
         typeTimer = new Timer(GameConstants.TYPEWRITER_SPEED, e -> {
             if (charIndex < fullText.length()) {
                 charIndex++;
-                dialogueBox.setText(currentSpeaker, fullText.substring(0, charIndex));
+                if (isCaptionMode && captionLabel != null) {
+                    captionLabel.setText(fullText.substring(0, charIndex));
+                } else {
+                    dialogueBox.setText(currentSpeaker, fullText.substring(0, charIndex));
+                }
             } else {
                 ((Timer) e.getSource()).stop();
             }
         });
         typeTimer.start();
     }
+
+    // ===============================
+    // PICK TOKEN RESOLVER (Single Player)
+    // ===============================
+    private String resolvePickToken(String token) {
+        if (token == null) return null;
+        token = token.trim();
+
+        if (!token.startsWith("PICK")) return token;
+
+        if (token.startsWith("PICK13_")) {
+            if (!model.GameState.picked13) {
+                addHeartByToken(token);
+                model.GameState.picked13 = true;
+                if (heartHUD != null) heartHUD.repaint();
+            }
+            if (token.endsWith("_TEER")) return "SCENE_14";
+            if (token.endsWith("_TIAN")) return "SCENE_15";
+            if (token.endsWith("_KIRIN")) return "SCENE_16";
+        }
+
+        if (token.startsWith("PICK17_")) {
+            if (!model.GameState.picked17) {
+                addHeartByToken(token);
+                model.GameState.picked17 = true;
+                if (heartHUD != null) heartHUD.repaint();
+            }
+            String end = decideEndingIfAny();
+            if (end != null) return end;
+            return "SCENE_21";
+        }
+
+        if (token.startsWith("PICK22_")) {
+            if (!model.GameState.picked22) {
+                addHeartByToken(token);
+                model.GameState.picked22 = true;
+                if (heartHUD != null) heartHUD.repaint();
+            }
+            return decideEndingFinal();
+        }
+
+        return token;
+    }
+
+    private void addHeartByToken(String token) {
+        if (token.endsWith("_TEER")) model.GameState.teerHeart++;
+        else if (token.endsWith("_TIAN")) model.GameState.tianHeart++;
+        else if (token.endsWith("_KIRIN")) model.GameState.kirinHeart++;
+    }
+
+    private String decideEndingIfAny() {
+        if (model.GameState.teerHeart >= 2) return "SCENE_TEER";
+        if (model.GameState.tianHeart >= 2) return "SCENE_TIAN";
+        if (model.GameState.kirinHeart >= 2) return "SCENE_KIRIN";
+        return null;
+    }
+
+    private String decideEndingFinal() {
+        String lockEnd = decideEndingIfAny();
+        if (lockEnd != null) return lockEnd;
+        if (model.GameState.teerHeart == 1 && model.GameState.tianHeart == 1 && model.GameState.kirinHeart == 1) {
+            return "SCENE_TRUE_END";
+        }
+        return "SCENE_TRUE_END";
+    }
+
+    // ================================================================
+    // Chat System
+    // ================================================================
+
+    public void showInlineChat(Object[][] chatData, String bgPath) {
+        if (inlineChatPanel != null) remove(inlineChatPanel);
+        
+        inlineChatPanel = new ChatScenePanel(chatData, bgPath, () -> {
+            Object[][] choiceOnly = new Object[][] {
+                chatData[chatData.length - 1] 
+            };
+            loadNewScene(choiceOnly, "SCENE_13_CHAT");
+            
+            remove(inlineChatPanel);
+            inlineChatPanel = null;
+            revalidate();
+            repaint();
+        }, false);
+        
+        int w = getWidth(), h = getHeight();
+        int chatH = (int)(h * 0.50);
+        inlineChatPanel.setBounds(0, 0, w, chatH);
+        
+        add(inlineChatPanel);
+        setComponentZOrder(inlineChatPanel, 0);
+        revalidate(); repaint();
+        inlineChatPanel.resetAndStart();
+    }
+
+    // ================================================================
+    // MiniGame
+    // ================================================================
 
     public void startHeartMiniGame() {
         if (currentMiniGame != null) { remove(currentMiniGame); currentMiniGame = null; }

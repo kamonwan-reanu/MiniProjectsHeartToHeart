@@ -30,5 +30,7 @@ public class GameConstants {
 
     // ✨ ตัวแปรเก็บชื่อผู้เล่น (ตั้งเป็นค่าว่าง เพื่อให้ผู้เล่นกรอกเอง)
     // ใช้ static (ไม่มี final) เพื่อให้สามารถเปลี่ยนค่าได้เมื่อผู้เล่นพิมพ์ชื่อเข้ามาค่ะ
-    public static String PLAYER_NAME = ""; 
+    public static String PLAYER_NAME = "";
+    
+    public static final String UI_PATH = BASE_PATH + "img_ui/";
 }
