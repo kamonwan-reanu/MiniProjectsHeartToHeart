@@ -6,6 +6,10 @@ import UI_Components.EffectManager;
 import UI_Components.PauseMenuUI;
 import UI_Components.RelationUI;
 import UI_Components.MultiplayerTimerBar;
+// ✅ เพิ่ม import มินิเกม
+import UI_Components.MemoryMatchMiniGame;
+import UI_Components.RockPaperScissorsMiniGame;
+
 import model.GameConstants;
 import model.GameServer;
 import model.GameClient;
@@ -22,11 +26,7 @@ import java.util.Random;
 
 /**
  * PlaySceneMP — 2-phase TFT timer + countdown + random choice on timeout
- *
- * Phase 1 READ (50วิ) → Countdown (3,2,1) → Phase 2 CHOICE (10วิ) → FORCE_NEXT
- *
- * ถ้า FORCE_NEXT และผู้เล่นยังไม่เลือก → สุ่มเลือกให้อัตโนมัติ
- * ทุกคนไปซีนถัดไปพร้อมกัน (Server ส่ง targetScene มาด้วย)
+ * + MiniGame integration
  */
 public class PlaySceneMP extends JPanel {
 
@@ -44,7 +44,13 @@ public class PlaySceneMP extends JPanel {
     private boolean isChoiceMode   = false;
     private Object[][] pendingChoices  = null;
     private boolean sentSceneReady    = false;
-    private boolean waitingForResult   = false; // ✅ รอ CHOICE_RESULT จาก server — block onNext()
+    private boolean waitingForResult   = false;
+
+    // ✅ เพิ่มตัวแปรสำหรับมินิเกม
+    private JPanel activeMiniGamePanel = null;
+    private boolean isInMiniGame = false;
+    private String currentMiniGameType = "";
+    private boolean miniGameFinished = false;
 
     // ── UI ─────────────────────────────────────────────────
     private JLabel              bgLayer;
@@ -80,7 +86,7 @@ public class PlaySceneMP extends JPanel {
             @Override public void componentResized(ComponentEvent e) { relayout(); }
             @Override public void componentShown(ComponentEvent e) {
                 relayout();
-                if (currentScene != null && sceneIndex < currentScene.length)
+                if (!isInMiniGame && currentScene != null && sceneIndex < currentScene.length)
                     renderLine(currentScene[sceneIndex]);
             }
         });
@@ -97,13 +103,13 @@ public class PlaySceneMP extends JPanel {
         this.mpClient = client;
 
         Relation.getInstance().resetAll();
-        // ไม่เรียก updateAllScores ใน MP — ทำให้ RelationUI แสดงตัวเอง
-        RelationUI.getInstance().setVisible(false);  // ซ่อนใน MP mode
+        RelationUI.getInstance().setVisible(false);
         effectManager.stopAll();
         timerBar.resetAndHide();
+        
+        // ✅ ปิดมินิเกมถ้ามีค้างอยู่
+        closeMiniGame();
 
-        // ✅ ไม่ set listener ที่นี่ — ให้ MultiplayerLobby เป็นคน set และ forward มาแทน
-        // register nextScene map ให้ Server รู้
         if (server != null) registerNextScenes(server);
 
         loadScene("MP_INTRO");
@@ -116,7 +122,10 @@ public class PlaySceneMP extends JPanel {
     // ── Host callbacks ────────────────────────────────────
     public void onHostPhaseRead(String scene, int sec, int total) {
         SwingUtilities.invokeLater(() -> {
-            RelationUI.getInstance().setVisible(false); // ซ่อนใน MP ทุกครั้ง
+            RelationUI.getInstance().setVisible(false);
+            // ✅ ถ้ากำลังอยู่ในมินิเกม ให้ข้าม
+            if (isInMiniGame) return;
+            
             if (mpClient != null) {
                 if (!scene.equals(sceneName) || currentScene == null) {
                     loadScene(scene);
@@ -128,28 +137,316 @@ public class PlaySceneMP extends JPanel {
             relayout();
         });
     }
+    
     public void onHostCountdown(int n) {
-        SwingUtilities.invokeLater(() -> timerBar.showCountdown(n));
+        SwingUtilities.invokeLater(() -> {
+            if (!isInMiniGame) timerBar.showCountdown(n);
+        });
     }
+    
     public void onHostPhaseChoice(String scene, int sec, int total) {
         SwingUtilities.invokeLater(() -> {
+            if (isInMiniGame) return;
+            
             timerBar.startChoicePhase(scene, sec, total);
             unlockChoiceButtons();
             if (!isChoiceMode || countChoiceButtons() == 0) skipToChoice(true);
             relayout();
         });
     }
+    
     public void onHostChoiceResult(String target, String charName, int score) {
-        SwingUtilities.invokeLater(() -> applyChoiceResult(target, charName, score));
+        SwingUtilities.invokeLater(() -> {
+            if (isInMiniGame) return;
+            applyChoiceResult(target, charName, score);
+        });
     }
+    
     public void onHostForceNext(String scene, String targetScene) {
-        SwingUtilities.invokeLater(() -> doForceNext(targetScene));
+        SwingUtilities.invokeLater(() -> {
+            if (isInMiniGame) return;
+            doForceNext(targetScene);
+        });
     }
+    
     public void onHostTimerSync(int t) {
-        SwingUtilities.invokeLater(() -> timerBar.setTimeLeft(t));
+        SwingUtilities.invokeLater(() -> {
+            if (!isInMiniGame) timerBar.setTimeLeft(t);
+        });
     }
+    
     public void onHostReadyCount(int ready, int total) {
-        SwingUtilities.invokeLater(() -> timerBar.setReadyCount(ready, total));
+        SwingUtilities.invokeLater(() -> {
+            if (!isInMiniGame) timerBar.setReadyCount(ready, total);
+        });
+    }
+
+    // ✅ เพิ่ม callback สำหรับมินิเกม
+    public void onHostStartMiniGame(String gameType, int timeSeconds) {
+        SwingUtilities.invokeLater(() -> {
+            System.out.println("🎮 Host starting minigame: " + gameType);
+            startMiniGame(gameType, timeSeconds);
+        });
+    }
+
+    public void onHostMiniGameResult(String playerName, boolean won, int points) {
+        SwingUtilities.invokeLater(() -> {
+            System.out.println("🏆 Minigame result: " + playerName + " " + (won ? "won" : "lost") + " +" + points);
+            showMiniGameResult(playerName, won, points);
+        });
+    }
+
+    // ════════════════════════════════════════════════════
+    //  MiniGame Methods
+    // ════════════════════════════════════════════════════
+
+    /**
+     * เริ่มมินิเกมตามประเภท
+     */
+    private void startMiniGame(String gameType, int timeSeconds) {
+        if (activeMiniGamePanel != null) {
+            System.out.println("⚠️ Minigame already running");
+            return;
+        }
+
+        isInMiniGame = true;
+        miniGameFinished = false;
+        currentMiniGameType = gameType;
+        
+        System.out.println("🎮 Starting " + gameType + " minigame for " + timeSeconds + "s");
+        
+        // ซ่อน UI ปกติ
+        dialogueBox.setVisible(false);
+        choiceLayer.setVisible(false);
+        timerBar.setVisible(false);
+
+        Runnable winAction = new Runnable() {
+            @Override
+            public void run() {
+                if (miniGameFinished) return;
+                miniGameFinished = true;
+                
+                // ชนะได้ 5 คะแนน ตามบท
+                int points = 5;
+                String playerName = GameConstants.PLAYER_NAME;
+                
+                System.out.println("🏆 " + playerName + " won the minigame! +" + points);
+                
+                if (mpServer != null) {
+                    mpServer.broadcastMiniGameResult(playerName, true, points);
+                } else if (mpClient != null) {
+                    mpClient.sendMiniGameResult(true, points);
+                }
+                
+                // เพิ่มคะแนนให้ตัวเองทันที
+                Relation.getInstance().addAffection("Jes", points);
+                
+                // รอ 2 วินาทีแล้วค่อยปิดเกม
+                Timer closeTimer = new Timer(2000, e -> {
+                    closeMiniGameAndContinue();
+                });
+                closeTimer.setRepeats(false);
+                closeTimer.start();
+            }
+        };
+
+        Runnable failAction = new Runnable() {
+            @Override
+            public void run() {
+                if (miniGameFinished) return;
+                miniGameFinished = true;
+                
+                // แพ้ได้ 2 คะแนน ตามบท
+                int points = 2;
+                String playerName = GameConstants.PLAYER_NAME;
+                
+                System.out.println("💔 " + playerName + " lost the minigame! +" + points);
+                
+                if (mpServer != null) {
+                    mpServer.broadcastMiniGameResult(playerName, false, points);
+                } else if (mpClient != null) {
+                    mpClient.sendMiniGameResult(false, points);
+                }
+                
+                Relation.getInstance().addAffection("Jes", points);
+                
+                Timer closeTimer = new Timer(2000, e -> {
+                    closeMiniGameAndContinue();
+                });
+                closeTimer.setRepeats(false);
+                closeTimer.start();
+            }
+        };
+
+        // สร้างมินิเกมตามประเภท
+        try {
+            switch (gameType.toUpperCase()) {
+                case "MATCH":
+                case "MEMORY":
+                    activeMiniGamePanel = new MemoryMatchMiniGame(winAction, failAction, true);
+                    break;
+                    
+                case "RPS":
+                case "ROCKPAPERSCISSORS":
+                    activeMiniGamePanel = new RockPaperScissorsMiniGame(winAction, failAction, true, timeSeconds);
+                    break;
+                    
+                default:
+                    System.err.println("❌ Unknown minigame type: " + gameType);
+                    isInMiniGame = false;
+                    return;
+            }
+
+            if (activeMiniGamePanel != null) {
+                showMiniGame();
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error creating minigame: " + e.getMessage());
+            e.printStackTrace();
+            isInMiniGame = false;
+        }
+    }
+
+    /**
+     * แสดงมินิเกมบนหน้าจอ
+     */
+    private void showMiniGame() {
+        int w = getWidth();
+        int h = getHeight();
+        
+        if (w <= 0 || h <= 0) {
+            w = 1000;
+            h = 700;
+        }
+        
+        int gameW = Math.min(900, w - 100);
+        int gameH = Math.min(700, h - 100);
+        int gameX = (w - gameW) / 2;
+        int gameY = (h - gameH) / 2;
+        
+        activeMiniGamePanel.setBounds(gameX, gameY, gameW, gameH);
+        add(activeMiniGamePanel);
+        setComponentZOrder(activeMiniGamePanel, 0);
+        
+        revalidate();
+        repaint();
+        
+        System.out.println("✅ Minigame displayed");
+    }
+
+    /**
+     * ปิดมินิเกม
+     */
+    private void closeMiniGame() {
+        if (activeMiniGamePanel != null) {
+            remove(activeMiniGamePanel);
+            activeMiniGamePanel = null;
+        }
+        isInMiniGame = false;
+        miniGameFinished = false;
+        currentMiniGameType = "";
+    }
+
+    /**
+     * ปิดมินิเกมและไปต่อ
+     */
+    private void closeMiniGameAndContinue() {
+        closeMiniGame();
+        
+        // แสดง UI กลับมา
+        dialogueBox.setVisible(true);
+        timerBar.setVisible(true);
+        
+        // ไปซีนต่อไปตามบท
+        if (mpServer != null) {
+            // Host สั่งให้ทุกคนไปซีนต่อไป
+            String nextScene = getNextSceneAfterMinigame(currentMiniGameType);
+            if (nextScene != null && !nextScene.isEmpty()) {
+                System.out.println("📢 Host broadcasting force next to: " + nextScene);
+                mpServer.broadcastForceNext(sceneName, nextScene);
+            } else {
+                // จบเกม
+                System.out.println("🏁 Game finished, broadcasting leaderboard");
+                mpServer.broadcastLeaderboard();
+            }
+        } else {
+            System.out.println("⏳ Client waiting for host to continue...");
+        }
+        
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * หาชื่อซีนถัดไปหลังจากมินิเกมตามบท
+     */
+    private String getNextSceneAfterMinigame(String gameType) {
+        if ("MATCH".equals(gameType)) {
+            return "MP_SCENE_3D"; // หลังจบเกมจับคู่ ไปฉาก 3D
+        } else if ("RPS".equals(gameType)) {
+            return "MP_SCENE_4C"; // หลังจบเกมเป่ายิ้งฉุบ ไปฉาก 4C
+        }
+        return null;
+    }
+
+    /**
+     * แสดงผลมินิเกม (ใครได้คะแนนเท่าไหร่)
+     */
+    private void showMiniGameResult(String playerName, boolean won, int points) {
+        JLabel resultLabel = new JLabel(
+            (won ? "🏆 " : "💔 ") + playerName + 
+            (won ? " ชนะ! " : " แพ้ ") + 
+            "ได้ " + points + " คะแนน",
+            SwingConstants.CENTER
+        );
+        resultLabel.setFont(new Font("Tahoma", Font.BOLD, 18));
+        resultLabel.setForeground(won ? new Color(255, 215, 0) : Color.WHITE);
+        resultLabel.setBackground(new Color(0, 0, 0, 180));
+        resultLabel.setOpaque(true);
+        resultLabel.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
+        
+        int w = getWidth();
+        int h = getHeight();
+        int labelW = 400;
+        int labelH = 50;
+        resultLabel.setBounds((w - labelW) / 2, h - 150, labelW, labelH);
+        
+        add(resultLabel);
+        setComponentZOrder(resultLabel, 0);
+        repaint();
+        
+        Timer hideTimer = new Timer(2000, e -> {
+            remove(resultLabel);
+            repaint();
+        });
+        hideTimer.setRepeats(false);
+        hideTimer.start();
+    }
+
+    /**
+     * ตรวจสอบว่าซีนนี้ต้องเล่นมินิเกมหรือไม่ ตามบท
+     */
+    private void checkForMiniGameTrigger() {
+        if (sceneName == null) return;
+        
+        System.out.println("🔍 Checking scene: " + sceneName);
+        
+        // ตามบท: ฉาก 3C -> MINIGAME_MATCH, ฉาก 4B -> MINIGAME_RPS
+        if ("MP_SCENE_3C".equals(sceneName)) {
+            System.out.println("🎮 Triggering MEMORY minigame from scene 3C");
+            if (mpServer != null) {
+                mpServer.broadcastStartMiniGame("MATCH", 45);
+            } else {
+                startMiniGame("MATCH", 45);
+            }
+        } else if ("MP_SCENE_4B".equals(sceneName)) {
+            System.out.println("🎮 Triggering RPS minigame from scene 4B");
+            if (mpServer != null) {
+                mpServer.broadcastStartMiniGame("RPS", 20);
+            } else {
+                startMiniGame("RPS", 20);
+            }
+        }
     }
 
     // ════════════════════════════════════════════════════
@@ -168,35 +465,78 @@ public class PlaySceneMP extends JPanel {
             @Override public void onError(String m) {}
 
             @Override public void onPhaseRead(String scene, int sec, int total) {
-                SwingUtilities.invokeLater(() -> { timerBar.startReadPhase(scene, sec, total); relayout(); });
+                SwingUtilities.invokeLater(() -> { 
+                    if (!isInMiniGame) {
+                        timerBar.startReadPhase(scene, sec, total); 
+                        relayout();
+                    }
+                });
             }
+            
             @Override public void onCountdown(int n) {
-                SwingUtilities.invokeLater(() -> timerBar.showCountdown(n));
+                SwingUtilities.invokeLater(() -> {
+                    if (!isInMiniGame) timerBar.showCountdown(n);
+                });
             }
+            
             @Override public void onPhaseChoice(String scene, int sec, int total) {
                 SwingUtilities.invokeLater(() -> {
+                    if (isInMiniGame) return;
+                    
                     timerBar.startChoicePhase(scene, sec, total);
                     unlockChoiceButtons();
                     if (!isChoiceMode || countChoiceButtons() == 0) skipToChoice(true);
                     relayout();
                 });
             }
+            
             @Override public void onChoiceResult(String target, String charName, int score) {
-                SwingUtilities.invokeLater(() -> applyChoiceResult(target, charName, score));
+                SwingUtilities.invokeLater(() -> {
+                    if (!isInMiniGame) applyChoiceResult(target, charName, score);
+                });
             }
+            
             @Override public void onForceNext(String scene, String targetScene) {
-                SwingUtilities.invokeLater(() -> doForceNext(targetScene));
+                SwingUtilities.invokeLater(() -> {
+                    if (!isInMiniGame) doForceNext(targetScene);
+                });
             }
+            
             @Override public void onTimerSync(int t) {
-                SwingUtilities.invokeLater(() -> timerBar.setTimeLeft(t));
+                SwingUtilities.invokeLater(() -> {
+                    if (!isInMiniGame) timerBar.setTimeLeft(t);
+                });
             }
+            
             @Override public void onReadyCount(int ready, int total) {
-                SwingUtilities.invokeLater(() -> timerBar.setReadyCount(ready, total));
+                SwingUtilities.invokeLater(() -> {
+                    if (!isInMiniGame) timerBar.setReadyCount(ready, total);
+                });
             }
-            // ✅ FIX: forward LEADERBOARD พร้อม scores กลับไป Lobby
+
+            // ✅ เพิ่ม listener สำหรับมินิเกม
+            @Override public void onStartMiniGame(String gameType, int timeSeconds) {
+                SwingUtilities.invokeLater(() -> {
+                    System.out.println("📱 Client received start minigame: " + gameType);
+                    startMiniGame(gameType, timeSeconds);
+                });
+            }
+
+            @Override public void onMiniGameResult(String playerName, boolean won, int points) {
+                SwingUtilities.invokeLater(() -> {
+                    System.out.println("📱 Client received minigame result: " + playerName);
+                    showMiniGameResult(playerName, won, points);
+                    
+                    if (playerName.equals(GameConstants.PLAYER_NAME)) {
+                        Relation.getInstance().addAffection("Jes", points);
+                    }
+                });
+            }
+
             @Override public void onLeaderboard(java.util.Map<String,Integer> scores) {
                 SwingUtilities.invokeLater(() -> {
                     timerBar.resetAndHide();
+                    closeMiniGame();
                     if (onLeaderboardCb != null) onLeaderboardCb.accept(scores);
                 });
             }
@@ -207,9 +547,10 @@ public class PlaySceneMP extends JPanel {
     //  Force Next — สุ่มเลือกถ้ายังไม่เลือก
     // ════════════════════════════════════════════════════
     private void doForceNext(String targetScene) {
+        if (isInMiniGame) return;
+        
         timerBar.stopTimer();
 
-        // ถ้ามีปุ่ม choice อยู่ + ยังไม่ได้เลือก → สุ่มให้
         if (isChoiceMode && pendingChoices != null && pendingChoices.length > 0) {
             int pick = random.nextInt(pendingChoices.length);
             Object[] chosen = pendingChoices[pick];
@@ -219,14 +560,12 @@ public class PlaySceneMP extends JPanel {
 
             if (countChoiceButtons() > 0) highlightRandomPick(pick);
 
-            // apply affection ของตัวเอง
             if (cn != null && !cn.isEmpty() && cs != 0) {
                 Relation.getInstance().addAffection(cn, cs);
                 RelationUI.getInstance().setVisible(false);
             }
 
             if (mpServer != null) {
-                // HOST: timeout → ส่ง choice สุ่มไป Server แต่ forceTimeout (ไม่รอ clients)
                 new Timer(500, e -> {
                     ((Timer)e.getSource()).stop();
                     isChoiceMode = false; pendingChoices = null;
@@ -235,7 +574,6 @@ public class PlaySceneMP extends JPanel {
                     mpServer.forceChoiceTimeout(pickedTarget);
                 }).start();
             } else if (mpClient != null) {
-                // CLIENT: timeout → ส่ง choice สุ่มให้ Server รวบรวม
                 new Timer(500, e -> {
                     ((Timer)e.getSource()).stop();
                     isChoiceMode = false; pendingChoices = null;
@@ -245,7 +583,6 @@ public class PlaySceneMP extends JPanel {
                     mpClient.sendPlayerChoice(pickedTarget, cn, cs);
                 }).start();
             } else {
-                // Singleplayer
                 new Timer(500, e -> {
                     ((Timer)e.getSource()).stop();
                     applyChoiceResult(pickedTarget, cn, cs);
@@ -254,7 +591,6 @@ public class PlaySceneMP extends JPanel {
             return;
         }
 
-        // ไม่มี choice → ไปตาม targetScene
         isChoiceMode   = false;
         pendingChoices = null;
         sentSceneReady = false;
@@ -264,12 +600,11 @@ public class PlaySceneMP extends JPanel {
 
         if (targetScene != null && !targetScene.isEmpty() && storyMap.containsKey(targetScene)) {
             if (mpServer != null) {
-                // Host broadcast ให้ทุกคนไปพร้อมกัน (ไม่มี affection)
                 mpServer.broadcastChoiceResult(targetScene, null, 0);
             } else if (mpClient != null) {
-                // Client รอรับ CHOICE_RESULT จาก Server
+                // รอ server
             } else {
-                loadScene(targetScene); // Singleplayer
+                loadScene(targetScene);
             }
         } else {
             if (mpServer != null) nextScene();
@@ -278,7 +613,6 @@ public class PlaySceneMP extends JPanel {
         }
     }
 
-    /** highlight ปุ่มที่ถูกสุ่มเลือก */
     private void highlightRandomPick(int index) {
         int i = 0;
         for (Component c : choiceLayer.getComponents()) {
@@ -293,7 +627,7 @@ public class PlaySceneMP extends JPanel {
     }
 
     // ════════════════════════════════════════════════════
-    //  Register next scenes for FORCE_NEXT routing
+    //  Register next scenes
     // ════════════════════════════════════════════════════
     private void registerNextScenes(GameServer server) {
         String[] order = StoryDataMP.SCENE_ORDER;
@@ -381,8 +715,19 @@ public class PlaySceneMP extends JPanel {
         int w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
 
-        // ซ่อน RelationUI ใน MP mode เสมอ
         RelationUI.getInstance().setVisible(false);
+
+        // ✅ ถ้ากำลังเล่นมินิเกม ให้จัดขนาดมินิเกม
+        if (isInMiniGame && activeMiniGamePanel != null) {
+            int gameW = Math.min(900, w - 100);
+            int gameH = Math.min(700, h - 100);
+            int gameX = (w - gameW) / 2;
+            int gameY = (h - gameH) / 2;
+            activeMiniGamePanel.setBounds(gameX, gameY, gameW, gameH);
+            revalidate();
+            repaint();
+            return;
+        }
 
         bgLayer.setBounds(0, 0, w, h);
         characterLayer.setBounds(0, 0, w, h);
@@ -424,10 +769,8 @@ public class PlaySceneMP extends JPanel {
         return n;
     }
 
-    /** แสดง toast แจ้งเตือนผู้เล่นออกจากห้อง */
     public void showPlayerLeftToast(String playerName) {
         SwingUtilities.invokeLater(() -> {
-            // ใช้ JWindow แบบ undecorated ลอยเหนือหน้าจอ
             Window parent = SwingUtilities.getWindowAncestor(this);
             JWindow popup = new JWindow(parent);
 
@@ -448,7 +791,6 @@ public class PlaySceneMP extends JPanel {
             popup.add(panel);
             popup.pack();
 
-            // วางมุมขวาล่างของ parent window
             if (parent != null) {
                 int px = parent.getX() + parent.getWidth()  - popup.getWidth()  - 14;
                 int py = parent.getY() + parent.getHeight() - popup.getHeight() - 14;
@@ -464,11 +806,10 @@ public class PlaySceneMP extends JPanel {
         });
     }
 
-    /** เรียกเมื่อ player ออกระหว่าง choice — reset UI ให้ host กดได้ */
     public void resetWaitingState() {
         SwingUtilities.invokeLater(() -> {
-            timerBar.resetWaitingForPlayers(); // ซ่อน "รอผู้เล่นคนอื่น..."
-            unlockChoiceButtons();             // unlock ปุ่มถ้า host ยังไม่กด
+            timerBar.resetWaitingForPlayers();
+            unlockChoiceButtons();
         });
     }
 
@@ -477,6 +818,7 @@ public class PlaySceneMP extends JPanel {
             if (comp instanceof UI_Components.ChoiceButton) comp.setEnabled(false);
         repaint();
     }
+    
     private void unlockChoiceButtons() {
         for (Component c : choiceLayer.getComponents())
             if (c instanceof UI_Components.ChoiceButton) c.setEnabled(true);
@@ -487,32 +829,40 @@ public class PlaySceneMP extends JPanel {
     //  Scene Logic
     // ════════════════════════════════════════════════════
     private void loadScene(String name) {
+        // ✅ ถ้ากำลังเล่นมินิเกม ไม่ต้องโหลดซีนใหม่
+        if (isInMiniGame) return;
+        
         Object[][] data = storyMap.get(name);
-        if (data == null) { finishGame(); return; }
+        if (data == null) { 
+            System.out.println("❌ Scene not found: " + name);
+            finishGame(); 
+            return; 
+        }
+        
+        System.out.println("📖 Loading scene: " + name);
         effectManager.stopAll();
 
-        currentScene = data; sceneName = name;
-        sceneIndex = 0; sentSceneReady = false; waitingForResult = false;
-        isChoiceMode = false; pendingChoices = null;
-        choiceLayer.removeAll(); choiceLayer.setVisible(false);
+        currentScene = data; 
+        sceneName = name;
+        sceneIndex = 0; 
+        sentSceneReady = false; 
+        waitingForResult = false;
+        isChoiceMode = false; 
+        pendingChoices = null;
+        choiceLayer.removeAll(); 
+        choiceLayer.setVisible(false);
 
         int total = (mpServer != null) ? mpServer.getPlayerCount() + 1 : 2;
 
         if (mpServer != null) {
-            // ถ้ามี pendingScene = name แสดงว่ามาจาก CHOICE_RESULT → แจ้ง server ว่าโหลดเสร็จ
-            // ถ้าเป็นซีนแรก (MP_INTRO) → startReadPhase โดยตรง
             if (mpServer.hasPendingScene(name)) {
-                mpServer.hostSceneLoaded(name); // server จะ startReadPhase เมื่อทุกคนโหลดเสร็จ
+                mpServer.hostSceneLoaded(name);
             } else {
-                mpServer.startReadPhase(name);  // ซีนแรก หรือ forced navigation
+                mpServer.startReadPhase(name);
             }
-            // timerBar จะเริ่มผ่าน onHostPhaseRead callback
         } else if (mpClient != null) {
-            // ✅ ไม่ start timer ที่นี่ — onHostPhaseRead จาก server จะ set timer
-            // แค่ reset timer bar ให้พร้อม
             timerBar.resetAndHide();
         } else {
-            // Singleplayer
             timerBar.startLocalReadPhase(name, GameServer.READ_SECONDS, () ->
                 SwingUtilities.invokeLater(() ->
                     timerBar.startLocalCountdownOverlay(() ->
@@ -529,12 +879,18 @@ public class PlaySceneMP extends JPanel {
         }
 
         renderLine(currentScene[sceneIndex]);
+        
+        // ✅ ตรวจสอบมินิเกมหลังจากโหลดซีน
+        checkForMiniGameTrigger();
     }
 
     private void renderLine(Object[] line) {
-        if (line == null || line.length < 2) return;
-        choiceLayer.removeAll(); choiceLayer.setVisible(false);
-        isChoiceMode = false; pendingChoices = null;
+        if (line == null || line.length < 2 || isInMiniGame) return;
+        
+        choiceLayer.removeAll(); 
+        choiceLayer.setVisible(false);
+        isChoiceMode = false; 
+        pendingChoices = null;
 
         currentSpeaker = "";
         Object sp = line[0];
@@ -562,30 +918,36 @@ public class PlaySceneMP extends JPanel {
         for (int i = 4; i < line.length; i++) {
             Object slot = line[i];
             if (slot instanceof Object[][]) {
-                pendingChoices = (Object[][]) slot; isChoiceMode = true;
+                pendingChoices = (Object[][]) slot; 
+                isChoiceMode = true;
             } else if (slot instanceof String) {
                 String val = (String)slot;
                 if (val==null||val.isEmpty()||val.equalsIgnoreCase("none")) continue;
                 String up = val.toUpperCase();
                 if (up.contains("FADE")||up.contains("WHITE")||up.contains("BLACK")
                         ||up.equals("SHAKE")||up.equals("FLASH")) {
-                    effectManager.stopAll(); effectManager.play(val);
+                    effectManager.stopAll(); 
+                    effectManager.play(val);
                 } else {
                     String path = GameConstants.SOUND_PATH+val+".wav";
-                    if (up.startsWith("BGM")) soundManager.playBGM(path); else soundManager.playSE(path);
+                    if (up.startsWith("BGM")) soundManager.playBGM(path); 
+                    else soundManager.playSE(path);
                 }
             }
         }
         dialogueBox.setVisible(true);
-        relayout(); startTypewriter();
+        relayout(); 
+        startTypewriter();
     }
 
     // ════════════════════════════════════════════════════
     //  Show Choices
     // ════════════════════════════════════════════════════
     private void showChoices(Object[][] choices, boolean alreadyUnlocked) {
-        if (choices == null) return;
-        isChoiceMode = true; choiceLayer.removeAll();
+        if (choices == null || isInMiniGame) return;
+        
+        isChoiceMode = true; 
+        choiceLayer.removeAll();
 
         for (int i = 0; i < choices.length; i++) {
             final String target = (String)  choices[i][1];
@@ -595,14 +957,17 @@ public class PlaySceneMP extends JPanel {
             final String num    = String.valueOf(i + 1);
 
             UI_Components.ChoiceButton btn = new UI_Components.ChoiceButton(num, text, () -> {
-                if (timerBar.isChoiceLocked()) return;
+                if (timerBar.isChoiceLocked() || isInMiniGame) return;
                 doChoice(target, cn, cs);
             });
             btn.setEnabled(alreadyUnlocked);
             choiceLayer.add(btn);
         }
 
-        relayout(); choiceLayer.setVisible(true); fixZOrder();
+        relayout(); 
+        choiceLayer.setVisible(true); 
+        fixZOrder();
+        
         if (alreadyUnlocked) unlockChoiceButtons();
 
         if (!alreadyUnlocked && !sentSceneReady) {
@@ -616,18 +981,26 @@ public class PlaySceneMP extends JPanel {
     //  Skip to Choice
     // ════════════════════════════════════════════════════
     private void skipToChoice(boolean unlock) {
+        if (isInMiniGame) return;
+        
         if (typeTimer != null) typeTimer.stop();
         if (isChoiceMode && countChoiceButtons() > 0) {
             if (unlock) unlockChoiceButtons();
             return;
         }
         if (currentScene == null) return;
+        
         for (int i = sceneIndex; i < currentScene.length; i++) {
             Object[] line = currentScene[i];
             if (line == null || line.length < 2) continue;
+            
             for (int j = 4; j < line.length; j++) {
                 if (!(line[j] instanceof Object[][])) continue;
-                sceneIndex = i; pendingChoices = (Object[][])line[j]; isChoiceMode = true;
+                
+                sceneIndex = i; 
+                pendingChoices = (Object[][])line[j]; 
+                isChoiceMode = true;
+                
                 currentSpeaker = "";
                 if (line[0] != null) {
                     String s = line[0].toString().trim();
@@ -636,10 +1009,21 @@ public class PlaySceneMP extends JPanel {
                     else if (!s.isEmpty() && !s.equalsIgnoreCase("none"))
                         currentSpeaker = s;
                 }
+                
                 fullText = line[1].toString().replace("[PLAYER]", GameConstants.PLAYER_NAME);
                 dialogueBox.setText(currentSpeaker, fullText);
-                if (line.length>=3) { String fn=(String)line[2]; currentChar=(fn==null||fn.isEmpty()||fn.equals("none"))?"":fn.startsWith("model/")?fn:GameConstants.CHAR_PATH+fn; characterLayer.updateCharacter(currentChar); }
-                if (line.length>=4) { String bg=(String)line[3]; currentBG=(bg==null||bg.isEmpty()||bg.equals("none"))?"":bg.startsWith("model/")?bg:GameConstants.SCENE_PATH+bg; }
+                
+                if (line.length>=3) { 
+                    String fn=(String)line[2]; 
+                    currentChar=(fn==null||fn.isEmpty()||fn.equals("none"))?"":fn.startsWith("model/")?fn:GameConstants.CHAR_PATH+fn; 
+                    characterLayer.updateCharacter(currentChar); 
+                }
+                
+                if (line.length>=4) { 
+                    String bg=(String)line[3]; 
+                    currentBG=(bg==null||bg.isEmpty()||bg.equals("none"))?"":bg.startsWith("model/")?bg:GameConstants.SCENE_PATH+bg; 
+                }
+                
                 dialogueBox.setVisible(true);
                 showChoices(pendingChoices, unlock);
                 return;
@@ -652,36 +1036,39 @@ public class PlaySceneMP extends JPanel {
     //  doChoice
     // ════════════════════════════════════════════════════
     private void doChoice(String target, String charName, int score) {
-        // apply affection ของตัวเองทันที
+        if (isInMiniGame) return;
+        
         if (charName != null && !charName.isEmpty() && score != 0) {
             Relation.getInstance().addAffection(charName, score);
-            RelationUI.getInstance().setVisible(false); // ซ่อนใน MP
+            RelationUI.getInstance().setVisible(false);
         }
 
-        isChoiceMode = false; pendingChoices = null; sentSceneReady = false;
-        choiceLayer.removeAll(); choiceLayer.setVisible(false);
+        isChoiceMode = false; 
+        pendingChoices = null; 
+        sentSceneReady = false;
+        choiceLayer.removeAll(); 
+        choiceLayer.setVisible(false);
         timerBar.stopTimer();
         lockChoiceButtons();
 
         if (mpServer != null) {
-            waitingForResult = true; // ✅ รอ CHOICE_RESULT
+            waitingForResult = true;
             mpServer.broadcastChoiceResult(target, charName, score);
             timerBar.showWaitingForPlayers();
         } else if (mpClient != null) {
-            waitingForResult = true; // ✅ รอ CHOICE_RESULT
+            waitingForResult = true;
             mpClient.sendPlayerChoice(target, charName, score);
             timerBar.showWaitingForPlayers();
         } else {
-            // Singleplayer
             timerBar.resetAndHide();
             if (target != null && storyMap.containsKey(target)) loadScene(target);
             else finishGame();
         }
     }
 
-    /** ทุกคนรับ choice result นี้พร้อมกัน (Host+Client) */
     private void applyChoiceResult(String target, String charName, int score) {
-        // ถ้าผู้เล่นยังไม่ได้กดเลือก (isChoiceMode ยังเป็น true) → สุ่ม affection ให้
+        if (isInMiniGame) return;
+        
         if (isChoiceMode && pendingChoices != null && pendingChoices.length > 0) {
             int pick = random.nextInt(pendingChoices.length);
             Object[] chosen = pendingChoices[pick];
@@ -693,13 +1080,17 @@ public class PlaySceneMP extends JPanel {
             }
         }
 
-        isChoiceMode = false; pendingChoices = null; sentSceneReady = false;
-        waitingForResult = false; // ✅ ได้รับ CHOICE_RESULT แล้ว
-        choiceLayer.removeAll(); choiceLayer.setVisible(false);
+        isChoiceMode = false; 
+        pendingChoices = null; 
+        sentSceneReady = false;
+        waitingForResult = false;
+        choiceLayer.removeAll(); 
+        choiceLayer.setVisible(false);
         timerBar.resetAndHide();
 
         if (target == null || target.isEmpty() || !storyMap.containsKey(target)) {
-            finishGame(); return;
+            finishGame(); 
+            return;
         }
 
         if (mpServer != null) {
@@ -716,15 +1107,17 @@ public class PlaySceneMP extends JPanel {
     //  Navigation
     // ════════════════════════════════════════════════════
     private void onNext() {
-        // ✅ FIX: รอ CHOICE_RESULT จาก server — ห้ามคลิกข้าม
-        if (waitingForResult) return;
+        if (waitingForResult || isInMiniGame) return;
 
         if (typeTimer != null && typeTimer.isRunning()) {
-            typeTimer.stop(); charIndex = fullText.length();
-            dialogueBox.setText(currentSpeaker, fullText); return;
+            typeTimer.stop(); 
+            charIndex = fullText.length();
+            dialogueBox.setText(currentSpeaker, fullText); 
+            return;
         }
         if (isChoiceMode && countChoiceButtons() == 0 && pendingChoices != null) {
-            showChoices(pendingChoices, !timerBar.isChoiceLocked()); return;
+            showChoices(pendingChoices, !timerBar.isChoiceLocked()); 
+            return;
         }
         if (isChoiceMode && countChoiceButtons() > 0) return;
 
@@ -735,20 +1128,30 @@ public class PlaySceneMP extends JPanel {
 
     private void nextScene() {
         timerBar.stopTimer();
-        if ("MP_END".equals(sceneName)) { finishGame(); return; }
+        if ("MP_END".equals(sceneName)) { 
+            finishGame(); 
+            return; 
+        }
+        
         String[] order = StoryDataMP.SCENE_ORDER;
         for (int i = 0; i < order.length - 1; i++) {
-            if (order[i].equals(sceneName)) { loadScene(order[i+1]); return; }
+            if (order[i].equals(sceneName)) { 
+                loadScene(order[i+1]); 
+                return; 
+            }
         }
         finishGame();
     }
 
     private void finishGame() {
         timerBar.resetAndHide();
+        closeMiniGame();
         if (onGameFinished != null) onGameFinished.run();
     }
 
     private void startTypewriter() {
+        if (isInMiniGame) return;
+        
         charIndex = 0;
         if (typeTimer != null) typeTimer.stop();
         dialogueBox.setVisible(true);
@@ -756,15 +1159,15 @@ public class PlaySceneMP extends JPanel {
             if (charIndex < fullText.length()) {
                 charIndex++;
                 dialogueBox.setText(currentSpeaker, fullText.substring(0, charIndex));
-            } else { ((Timer)e.getSource()).stop(); }
+            } else { 
+                ((Timer)e.getSource()).stop(); 
+            }
         });
         typeTimer.start();
     }
 
     private void setupKeys() {
-        // ✅ WHEN_IN_FOCUSED_WINDOW — ไม่ต้องการ focus จาก JPanel
-        // ❌ ลบ KeyListener และ requestFocusInWindow ออกทั้งหมด
-        setFocusable(false); // ป้องกัน focus cycle ดูด focus จาก window
+        setFocusable(false);
 
         InputMap  im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         ActionMap am = getActionMap();
@@ -782,7 +1185,10 @@ public class PlaySceneMP extends JPanel {
 
     private void handleEsc() {
         PauseMenuUI pause = PauseMenuUI.getInstance();
-        if (pause.isMenuVisible()) { pause.hideMenu(); return; }
+        if (pause.isMenuVisible()) { 
+            pause.hideMenu(); 
+            return; 
+        }
         pause.showMenu(PlaySceneMP.this, false);
     }
 }
