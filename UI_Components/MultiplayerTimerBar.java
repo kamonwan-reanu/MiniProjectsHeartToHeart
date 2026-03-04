@@ -57,7 +57,7 @@ public class MultiplayerTimerBar extends JPanel {
         stopLocalTimer();
         phase = Phase.READ; sceneName = scene;
         totalSeconds = sec; timeLeft = sec;
-        totalPlayers = total; readyCount = 0; choiceLocked = true;
+        totalPlayers = total; readyCount = 0; choiceLocked = true; waitingForPlayers = false;
         setVisible(true);
         SwingUtilities.invokeLater(this::repaint);
     }
@@ -74,7 +74,7 @@ public class MultiplayerTimerBar extends JPanel {
         stopLocalTimer();
         phase = Phase.CHOICE; sceneName = scene;
         totalSeconds = sec; timeLeft = sec;
-        totalPlayers = total; choiceLocked = false;
+        totalPlayers = total; choiceLocked = false; waitingForPlayers = false;
         setVisible(true);
         SwingUtilities.invokeLater(() -> {
             repaint();
@@ -110,6 +110,13 @@ public class MultiplayerTimerBar extends JPanel {
     public void showWaitingForPlayers() {
         choiceLocked = true;
         waitingForPlayers = true;
+        SwingUtilities.invokeLater(this::repaint);
+    }
+
+    /** เรียกเมื่อ player ออกระหว่าง choice — ให้ host กดได้อีกครั้ง */
+    public void resetWaitingForPlayers() {
+        waitingForPlayers = false;
+        choiceLocked = false;
         SwingUtilities.invokeLater(this::repaint);
     }
 

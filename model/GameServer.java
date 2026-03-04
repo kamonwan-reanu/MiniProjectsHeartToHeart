@@ -41,6 +41,8 @@ public class GameServer {
         void onPlayerLeft(String playerName, int total);
         void onScoreReceived(String playerName, int score);
         void onAllPlayersFinished(Map<String, Integer> finalScores);
+        /** แจ้ง Host ว่ามี player ออกระหว่าง choice phase — ให้ reset waitingForPlayers UI */
+        default void onPlayerLeftDuringChoice() {}
         void onServerError(String message);
         void onServerStarted(String ip, int port);
 
@@ -61,6 +63,7 @@ public class GameServer {
     private final Set<String>          finishedSet  = ConcurrentHashMap.newKeySet();
     private final Set<String>          clientReadyForScene = ConcurrentHashMap.newKeySet();
     private String  pendingScene = "";
+    private int     sceneLoadedCount = 0;
     // ✅ เก็บ choice ของแต่ละคน (รอให้ครบก่อน broadcast)
     private final Map<String,String[]> playerChoices = new ConcurrentHashMap<>();
     private String  hostChoiceTarget = null;
@@ -200,69 +203,92 @@ public class GameServer {
     //  เรียกแทน loadScene โดยตรง เพื่อให้ทุกคนไปพร้อมกัน
     // ════════════════════════════════════════════════
     /**
-     * HOST บันทึก choice ของตัวเอง แล้วรอให้ทุกคน submit ก่อน
-     * เมื่อครบแล้วค่อย broadcast CHOICE_RESULT ให้ทุกคนไปพร้อมกัน
+     * HOST ส่ง choice มาเก็บ แล้วรอให้ clients ส่งครบก่อน broadcast
      */
     public void broadcastChoiceResult(String targetScene, String charName, int score) {
-        stopTimer();
+        if (!inChoicePhase) return;
         hostChoiceTarget = targetScene;
-        // บันทึก choice ของ host
-        playerChoices.put(hostName, new String[]{targetScene,
-            charName != null ? charName : "", String.valueOf(score)});
+        playerChoices.put(hostName, new String[]{targetScene, charName != null ? charName : "", String.valueOf(score)});
         checkAllChosen();
     }
 
-    /** Client ส่ง choice มาให้ server รอรวม */
+    /** Client ส่ง choice มาเก็บ แล้วเช็คว่าครบหรือยัง */
     public void receiveClientChoice(String playerName, String target, String charName, int score) {
-        playerChoices.put(playerName, new String[]{target, charName, String.valueOf(score)});
+        if (!inChoicePhase) return;
+        playerChoices.put(playerName, new String[]{target, charName != null ? charName : "", String.valueOf(score)});
         checkAllChosen();
     }
 
-    /** เมื่อทุกคน submit choice ครบ → broadcast ไปพร้อมกัน */
+    /** ครบทุกคนแล้ว (ทั้ง host และ clients) → broadcast */
     private void checkAllChosen() {
         int total = lockedTotal > 0 ? lockedTotal : clients.size() + 1;
-        if (playerChoices.size() < total) return; // ยังไม่ครบ
+        // ถ้า host ยังไม่กด → รอก่อน (ยกเว้นถ้า host เป็นคนเดียวที่ยังไม่กดและ timeout จะจัดการเอง)
+        if (hostChoiceTarget == null) return;
+        // ทุกคนกดแล้ว (playerChoices รวม host ด้วย)
+        if (playerChoices.size() >= total) {
+            doFinalBroadcastChoice(hostChoiceTarget);
+        }
+    }
 
-        String target = hostChoiceTarget != null ? hostChoiceTarget : "";
-        playerChoices.clear();
-        hostChoiceTarget = null;
+    /** เรียกหลัง player disconnect ระหว่าง choice — recheck กับ count ใหม่ */
+    private void recheckAfterDisconnect() {
+        if (!inChoicePhase) return;
+        int total = lockedTotal > 0 ? lockedTotal : clients.size() + 1;
+
+        // ถ้า host กดแล้ว (hostChoiceTarget มีค่า) → เช็คว่าครบหรือยัง
+        if (hostChoiceTarget != null && !hostChoiceTarget.isEmpty()) {
+            if (total <= 1 || playerChoices.size() >= total) {
+                doFinalBroadcastChoice(hostChoiceTarget);
+            }
+        }
+        // ถ้า host ยังไม่กด → host กดได้ตามปกติ (UI ถูก reset โดย onPlayerLeftDuringChoice แล้ว)
+    }
+
+    /** เวลาหมด → ใช้ choice ที่มีอยู่ หรือ fallback target ที่ส่งมา */
+    public void forceChoiceTimeout(String fallbackTarget) {
+        if (!inChoicePhase) return;
+        String target = (hostChoiceTarget != null && !hostChoiceTarget.isEmpty())
+            ? hostChoiceTarget : fallbackTarget;
         doFinalBroadcastChoice(target);
     }
 
-    /** บังคับ broadcast ทันที (timeout หรือครบแล้ว) */
+    /** broadcast CHOICE_RESULT ให้ทุกคน navigate พร้อมกัน */
     private void doFinalBroadcastChoice(String targetScene) {
+        inChoicePhase = false;
+        playerChoices.clear();
+        hostChoiceTarget = null;
         clientReadyForScene.clear();
         pendingScene = targetScene;
+        sceneLoadedCount = 0; // reset นับคนที่ load scene เสร็จ
 
-        // ส่ง CHOICE_RESULT ให้ clients
-        broadcast("CHOICE_RESULT:" + targetScene + "::"); // ไม่ส่ง affection — แต่ละคนจัดการเอง
-        // แจ้ง Host navigate
+        broadcast("CHOICE_RESULT:" + targetScene + "::");
         if (listener != null) listener.onChoiceResult(targetScene, "", 0);
-
-        // Safety net
-        new java.util.Timer("SceneLoadTimeout", true).schedule(new TimerTask() {
-            @Override public void run() {
-                if (pendingScene.equals(targetScene)) {
-                    pendingScene = "";
-                    startReadPhase(targetScene);
-                }
-            }
-        }, 3000);
+        // ไม่มี safety timeout แล้ว — ใช้ hostSceneLoaded + clientSceneLoaded แทน
     }
 
-    /** Timer phase ChoiceTimeout → ใช้สิ่งที่มีอยู่แล้วหรือสุ่ม */
-    public void forceChoiceTimeout(String targetScene) {
-        stopTimer();
-        if (hostChoiceTarget == null) hostChoiceTarget = targetScene;
-        playerChoices.clear(); // ล้างแล้ว broadcast ทันที
-        doFinalBroadcastChoice(hostChoiceTarget != null ? hostChoiceTarget : targetScene);
+    /** ตรวจว่ากำลังรอ clients โหลดซีนนี้อยู่หรือเปล่า */
+    public boolean hasPendingScene(String scene) {
+        return scene != null && scene.equals(pendingScene) && !pendingScene.isEmpty();
+    }
+
+    /** Host บอกว่า navigate ไปซีนใหม่เสร็จแล้ว (เรียกจาก PlaySceneMP หลัง loadScene) */
+    public void hostSceneLoaded(String scene) {
+        if (!scene.equals(pendingScene)) return;
+        sceneLoadedCount++;
+        checkAllSceneLoaded(scene);
     }
 
     /** Client บอกว่า navigate ไปซีนใหม่เสร็จแล้ว */
     public void clientSceneLoaded(String playerName, String scene) {
         if (!scene.equals(pendingScene)) return;
         clientReadyForScene.add(playerName);
-        if (clientReadyForScene.size() >= clients.size()) {
+        sceneLoadedCount++;
+        checkAllSceneLoaded(scene);
+    }
+
+    private void checkAllSceneLoaded(String scene) {
+        int total = lockedTotal > 0 ? lockedTotal : clients.size() + 1;
+        if (sceneLoadedCount >= total) {
             pendingScene = "";
             startReadPhase(scene);
         }
@@ -272,13 +298,18 @@ public class GameServer {
     //  Host พร้อม (in-process)
     // ════════════════════════════════════════════════
     public void hostSceneReady(String sceneName) {
-        if (!sceneName.equals(currentScene) || inChoicePhase) return;
+        // ไม่เช็ค sceneName เพราะ host อาจอ่านเร็วกว่า client โหลดซีน
+        if (inChoicePhase) return;
         readySet.add(hostName);
+        checkAllReady();
+    }
+
+    private void checkAllReady() {
         int total = lockedTotal > 0 ? lockedTotal : clients.size() + 1;
         int ready = readySet.size();
         broadcast("READY_COUNT:" + ready + ":" + total);
         if (listener != null) listener.onReadyCount(ready, total);
-        if (ready >= total) { stopTimer(); startCountdown(sceneName); }
+        if (ready >= total) { stopTimer(); startCountdown(currentScene); }
     }
 
     // ════════════════════════════════════════════════
@@ -313,9 +344,24 @@ public class GameServer {
 
     public void stop() {
         running = false; stopTimer();
+        // ✅ Bug 1: แจ้ง clients ว่า host ออกจากห้อง → clients จะกลับหน้าล็อบบี้
+        broadcast("HOST_LEFT");
         for (ClientHandler c : clients) c.disconnect();
         clients.clear();
         try { if (serverSocket != null) serverSocket.close(); } catch (IOException ignored) {}
+    }
+
+    /** ถ้าชื่อซ้ำให้เพิ่มเลขต่อท้าย เช่น "ice" → "ice(2)" */
+    private String resolveUniqueName(String name) {
+        Set<String> taken = new java.util.HashSet<>();
+        taken.add(hostName);
+        for (ClientHandler ch : clients) {
+            if (!ch.playerName.equals("Unknown")) taken.add(ch.playerName);
+        }
+        if (!taken.contains(name)) return name;
+        int n = 2;
+        while (taken.contains(name + "(" + n + ")")) n++;
+        return name + "(" + n + ")";
     }
 
     public void broadcast(String msg) {
@@ -385,9 +431,11 @@ public class GameServer {
 
         private void handle(String msg) {
             if (msg.startsWith("JOIN:")) {
-                playerName = msg.substring(5).trim();
+                String requestedName = msg.substring(5).trim();
+                // ✅ Bug 2: ถ้าชื่อซ้ำกับ host หรือ client อื่น ให้เพิ่มเลขต่อท้าย
+                playerName = resolveUniqueName(requestedName);
                 playerScores.put(playerName, 0);
-                send("WELCOME:" + playerName);
+                send("WELCOME:" + playerName); // ส่งชื่อที่ได้จริงๆ กลับไป
                 broadcastPlayerList();
                 if (listener != null) listener.onPlayerJoined(playerName, clients.size()+1);
 
@@ -402,14 +450,10 @@ public class GameServer {
                 } catch (NumberFormatException ignored) {}
 
             } else if (msg.startsWith("SCENE_READY:")) {
-                String scene = msg.substring(12).trim();
-                if (!scene.equals(currentScene) || inChoicePhase) return;
+                // ไม่เช็ค scene name — player อาจอ่านเร็วกว่า server update currentScene
+                if (inChoicePhase) return;
                 readySet.add(playerName);
-                int total = lockedTotal > 0 ? lockedTotal : clients.size() + 1;
-                int ready = readySet.size();
-                broadcast("READY_COUNT:" + ready + ":" + total);
-                if (listener != null) listener.onReadyCount(ready, total);
-                if (ready >= total) { stopTimer(); startCountdown(scene); }
+                checkAllReady();
 
             } else if (msg.startsWith("SCENE_LOADED:")) {
                 String scene = msg.substring(13).trim();
@@ -431,6 +475,24 @@ public class GameServer {
 
         void disconnect() {
             clients.remove(this); playerScores.remove(playerName); readySet.remove(playerName);
+            finishedSet.remove(playerName); // ลบออกจาก finished ด้วย
+            // ✅ ลด expected count เสมอ เพื่อให้ ready/finish count ถูกต้อง
+            if (lockedTotal > 1) lockedTotal--;
+            if (expectedPlayers > 1) expectedPlayers--;
+            // ถ้าออกระหว่าง choice phase → ลบ choice แล้วเช็คใหม่
+            if (inChoicePhase) {
+                playerChoices.remove(playerName);
+                // แจ้ง host UI reset waiting state ก่อนเสมอ (กรณี host กดแล้วรอ client นี้อยู่)
+                if (listener != null) listener.onPlayerLeftDuringChoice();
+                recheckAfterDisconnect();
+            }
+            // ถ้าออกระหว่าง read phase → เช็ค ready count ใหม่
+            if (!inChoicePhase) {
+                readySet.remove(playerName);
+                checkAllReady();
+            }
+            // เช็ค score ด้วย (ถ้าออกช่วงส่งคะแนน)
+            checkAllFinished();
             try { if(socket!=null) socket.close(); } catch (IOException ignored) {}
             if (!playerName.equals("Unknown")) {
                 broadcastPlayerList();

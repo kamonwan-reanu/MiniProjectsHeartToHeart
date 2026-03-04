@@ -3,6 +3,7 @@ package UI_Screens;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.GradientPaint;
 import java.awt.event.*;
 import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
@@ -223,7 +224,10 @@ public class MultiplayerLobby extends JPanel {
         menuBtn.addActionListener(e->{resetAll();Main.cardLayout.show(Main.mainContainer,"MENU");});
         againBtn.addActionListener(e->{resetAll();goMain();});
         box.add(menuBtn); box.add(gap(10)); box.add(againBtn);
-        leaderboardPanel.add(box); leaderboardPanel.revalidate(); leaderboardPanel.repaint(); show("LEADERBOARD");
+        leaderboardPanel.add(box); leaderboardPanel.revalidate(); leaderboardPanel.repaint();
+        // ✅ Bug 2: switch main card กลับมาที่ Lobby ก่อน แล้วค่อย show LEADERBOARD
+        Main.cardLayout.show(Main.mainContainer, "MULTIPLAYER");
+        show("LEADERBOARD");
     }
 
     // ════════════════════════════════════════════════════
@@ -258,12 +262,23 @@ public class MultiplayerLobby extends JPanel {
                     playerCountLabel.setText("ผู้เล่น: "+Math.min(playerNames.size(),3)+" / 3");
                     refreshPlayerList();
                     if(playerNames.size()<=1) startGameBtn.setEnabled(false);
+                    // ✅ แจ้งเตือนในเกม
+                    if (activeMPScene != null) activeMPScene.showPlayerLeftToast(pName);
+                });
+            }
+            @Override public void onPlayerLeftDuringChoice(){
+                SwingUtilities.invokeLater(()->{
+                    // ✅ Bug 1: reset UI ให้ host กดได้ถ้า player ออกระหว่าง choice
+                    if (activeMPScene != null) activeMPScene.resetWaitingState();
                 });
             }
             @Override public void onScoreReceived(String n,int s){}
             @Override public void onAllPlayersFinished(Map<String,Integer> finalScores){
                 finalScores.put(GameConstants.PLAYER_NAME,Relation.getInstance().getAffection("Ahri"));
-                SwingUtilities.invokeLater(()->showLeaderboard(finalScores));
+                SwingUtilities.invokeLater(()->{
+                    activeMPScene = null;
+                    showLeaderboard(finalScores); // showLeaderboard จะ switch main card เองแล้ว
+                });
             }
             @Override public void onServerError(String msg){
                 SwingUtilities.invokeLater(()->{
@@ -312,6 +327,8 @@ public class MultiplayerLobby extends JPanel {
         client=new GameClient(name);
         client.setListener(new GameClient.ClientListener(){
             @Override public void onConnected(String playerName){
+                // ✅ อัปเดตชื่อจริงจาก Server (อาจต่างถ้าชื่อซ้ำ เช่น "ice(2)")
+                GameConstants.PLAYER_NAME = playerName;
                 SwingUtilities.invokeLater(()->{ playerNames.clear(); playerNames.add(playerName); refreshWaitingList(); show("WAITING"); });
             }
             @Override public void onPlayerListReceived(List<String> names){
@@ -326,7 +343,11 @@ public class MultiplayerLobby extends JPanel {
                 SwingUtilities.invokeLater(()->loadGameAndPlay(false,readSeconds));
             }
             @Override public void onPlayerJoined(String p,int t){}
-            @Override public void onPlayerLeft(String p,int t){}
+            @Override public void onPlayerLeft(String p,int t){
+                SwingUtilities.invokeLater(()->{
+                    if (activeMPScene != null) activeMPScene.showPlayerLeftToast(p);
+                });
+            }
             @Override public void onScoreUpdate(String p,int s){}
             @Override public void onLeaderboard(Map<String,Integer> scores){
                 SwingUtilities.invokeLater(()->showLeaderboard(scores));
@@ -334,8 +355,13 @@ public class MultiplayerLobby extends JPanel {
             @Override public void onChatMessage(String sender,String message){}
             @Override public void onDisconnected(String reason){
                 SwingUtilities.invokeLater(()->{
-                    setJoinStatus("ตัดการเชื่อมต่อ: "+reason,Color.RED);
-                    connectBtn.setEnabled(true); connectBtn.setText("เชื่อมต่อ"); goJoin();
+                    if (client != null) { client.disconnect(); client = null; }
+                    activeMPScene = null;
+                    Main.cardLayout.show(Main.mainContainer, "MULTIPLAYER");
+                    show("MAIN");
+                    setJoinStatus("หัวห้องออกจากเกม", Color.RED);
+                    connectBtn.setEnabled(true); connectBtn.setText("เชื่อมต่อ");
+                    showHostLeftDialog();
                 });
             }
             @Override public void onError(String message){
@@ -382,7 +408,7 @@ public class MultiplayerLobby extends JPanel {
     // ════════════════════════════════════════════════════
     private void loadGameAndPlay(boolean asHost, int readSeconds) {
         Relation.getInstance().resetAll();
-        UI_Components.RelationUI.getInstance().updateAllScores();
+        UI_Components.RelationUI.getInstance().setVisible(false); // ซ่อนใน MP เสมอ
         activeMPScene = findOrCreateMPScene();
         activeMPScene.startMPGame(asHost ? server : null, asHost ? null : client);
         String myName = GameConstants.PLAYER_NAME.isEmpty() ? "Player" : GameConstants.PLAYER_NAME;
@@ -408,6 +434,106 @@ public class MultiplayerLobby extends JPanel {
         PlaySceneMP mp = new PlaySceneMP();
         Main.mainContainer.add(mp,"PLAY_SCENE_MP");
         return mp;
+    }
+
+    private void showHostLeftDialog() {
+        // ── overlay ──────────────────────────────────────────
+        JPanel overlay = new JPanel(new GridBagLayout()) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setColor(new Color(0, 0, 0, 160));
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                g2.dispose();
+            }
+        };
+        overlay.setOpaque(false);
+
+        // ── dialog box ───────────────────────────────────────
+        JPanel box = new JPanel(new BorderLayout(0, 0)) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                // shadow
+                g2.setColor(new Color(0, 0, 0, 100));
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(6, 6, getWidth()-4, getHeight()-4, 24, 24));
+                // bg
+                g2.setColor(new Color(12, 16, 30));
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(0, 0, getWidth()-6, getHeight()-6, 24, 24));
+                // border
+                g2.setColor(new Color(220, 60, 60));
+                g2.setStroke(new BasicStroke(2f));
+                g2.draw(new java.awt.geom.RoundRectangle2D.Float(1, 1, getWidth()-8, getHeight()-8, 24, 24));
+                // top accent line
+                g2.setStroke(new BasicStroke(2.5f));
+                g2.setPaint(new GradientPaint(30, 0, new Color(220, 60, 60), getWidth()-30, 0, new Color(0,0,0,0)));
+                g2.drawLine(30, 1, getWidth()-30, 1);
+                g2.dispose();
+            }
+        };
+        box.setOpaque(false);
+        box.setPreferredSize(new Dimension(420, 260));
+        box.setBorder(BorderFactory.createEmptyBorder(28, 32, 24, 32));
+
+        // ── icon + title ─────────────────────────────────────
+        JLabel icon  = new JLabel("⚠", SwingConstants.CENTER);
+        icon.setFont(new Font("Dialog", Font.PLAIN, 44));
+        icon.setForeground(new Color(220, 60, 60));
+
+        JLabel title = new JLabel("หัวห้องออกจากเกม", SwingConstants.CENTER);
+        title.setFont(new Font("Tahoma", Font.BOLD, 22));
+        title.setForeground(new Color(240, 245, 255));
+
+        JLabel sub = new JLabel("คุณถูกนำกลับมายังล็อบบี้", SwingConstants.CENTER);
+        sub.setFont(new Font("Tahoma", Font.PLAIN, 16));
+        sub.setForeground(new Color(160, 175, 210));
+
+        // ── OK button ─────────────────────────────────────────
+        JButton okBtn = new JButton("รับทราบ") {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Color c = getModel().isRollover() ? new Color(240, 80, 80) : new Color(200, 50, 50);
+                g2.setColor(c);
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 12, 12));
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        okBtn.setFont(new Font("Tahoma", Font.BOLD, 16));
+        okBtn.setForeground(Color.WHITE);
+        okBtn.setOpaque(false); okBtn.setContentAreaFilled(false);
+        okBtn.setBorderPainted(false); okBtn.setFocusPainted(false);
+        okBtn.setBorder(BorderFactory.createEmptyBorder(10, 40, 10, 40));
+        okBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        // ── layout ───────────────────────────────────────────
+        JPanel center = new JPanel();
+        center.setLayout(new BoxLayout(center, BoxLayout.Y_AXIS));
+        center.setOpaque(false);
+        icon .setAlignmentX(Component.CENTER_ALIGNMENT);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        sub  .setAlignmentX(Component.CENTER_ALIGNMENT);
+        okBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        center.add(icon);
+        center.add(Box.createRigidArea(new Dimension(0, 10)));
+        center.add(title);
+        center.add(Box.createRigidArea(new Dimension(0, 8)));
+        center.add(sub);
+        center.add(Box.createRigidArea(new Dimension(0, 24)));
+        center.add(okBtn);
+        box.add(center, BorderLayout.CENTER);
+        overlay.add(box);
+
+        // ── mount บน LayeredPane ──────────────────────────────
+        JLayeredPane lp = Main.mainFrame.getLayeredPane();
+        overlay.setBounds(0, 0, lp.getWidth(), lp.getHeight());
+        lp.add(overlay, JLayeredPane.MODAL_LAYER);
+        lp.revalidate(); lp.repaint();
+
+        okBtn.addActionListener(e -> {
+            lp.remove(overlay);
+            lp.revalidate(); lp.repaint();
+        });
     }
 
     // ════════════════════════════════════════════════════

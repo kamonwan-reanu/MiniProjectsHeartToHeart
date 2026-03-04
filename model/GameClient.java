@@ -77,7 +77,9 @@ public class GameClient {
 
     private void handle(String msg) {
         if (msg.startsWith("WELCOME:")) {
-            if (listener!=null) listener.onConnected(msg.substring(8));
+            // ✅ อัปเดตชื่อจริงที่ Server กำหนดให้ (อาจต่างจากที่ขอถ้าชื่อซ้ำ)
+            playerName = msg.substring(8).trim();
+            if (listener!=null) listener.onConnected(playerName);
 
         } else if (msg.startsWith("PLAYER_LIST:")) {
             String[] names = msg.substring(12).split(",");
@@ -145,6 +147,11 @@ public class GameClient {
             String[] p = msg.substring(12).split(":");
             try { if (p.length>=2 && listener!=null) listener.onPlayerLeft(p[0],Integer.parseInt(p[1])); }
             catch (NumberFormatException ignored) {}
+
+        } else if (msg.equals("HOST_LEFT")) {
+            connected = false;
+            try { if (socket != null) socket.close(); } catch (IOException ignored) {}
+            if (listener != null) listener.onDisconnected("หัวห้องออกจากห้องแล้ว");
 
         } else if (msg.startsWith("SCORE_UPDATE:")) {
             String[] p = msg.substring(13).split(":");

@@ -3,6 +3,7 @@ package UI_Screens;
 import UI_Components.CharacterSprite;
 import UI_Components.DialogueBox;
 import UI_Components.EffectManager;
+import UI_Components.PauseMenuUI;
 import UI_Components.RelationUI;
 import UI_Components.MultiplayerTimerBar;
 import model.GameConstants;
@@ -87,12 +88,55 @@ public class PlaySceneMain extends JPanel {
                 updateUIStyles();
                 if (currentSceneData != null && storyIndex < currentSceneData.length)
                     updateScene(currentSceneData[storyIndex]);
+                
+                // ✅ สำคัญมาก: ขอ focus ทุกครั้งที่แสดง
+                SwingUtilities.invokeLater(() -> {
+                    requestFocusInWindow();
+                    System.out.println("PlaySceneMain requested focus: " + hasFocus());
+                });
             }
         });
 
         dialogueBox.setOnNextRequested(this::handleInteraction);
         setupKeyBindings();
+        
+        // ✅ เพิ่ม这个方法เผื่อ KeyBinding ไม่ทำงาน
+        setupEscapeKeyListener();
+        
+        setFocusable(true);
     }
+
+    // ✅ เพิ่ม这个方法
+    private void setupEscapeKeyListener() {
+        // KeyListener สำรอง
+        addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    System.out.println("ESC pressed in PlaySceneMain KeyListener");
+                    handleEscape();
+                    e.consume();
+                }
+            }
+        });
+    }
+
+    // ✅ แยก method handleEscape
+    private void handleEscape() {
+        System.out.println("=== handleEscape called ===");  // เพิ่ม
+        PauseMenuUI pause = PauseMenuUI.getInstance();
+        System.out.println("menuVisible=" + pause.isMenuVisible());  // เพิ่ม
+
+        if (pause.isMenuVisible()) {
+            pause.hideMenu();
+            return;
+        }
+
+        if (effectManager != null && effectManager.isPlaying()) return;
+
+        pause.showMenu(PlaySceneMain.this, true);
+    }
+    
 
     // ================================================================
     // Multiplayer API
@@ -117,7 +161,6 @@ public class PlaySceneMain extends JPanel {
             if (timerBar != null) timerBar.resetAndHide();
         }
 
-        // บอก EffectManager ด้วย
         if (effectManager != null) effectManager.setMultiplayerBypass(enabled);
     }
 
@@ -128,7 +171,6 @@ public class PlaySceneMain extends JPanel {
 
     public void setOnGameFinished(Runnable callback) { this.onGameFinished = callback; }
 
-    /** รับแจ้งจาก GameClient ว่าผู้เล่นอื่น CHOICE_READY */
     public void onRemotePlayerReady() {
         if (timerBar != null) SwingUtilities.invokeLater(() -> timerBar.otherPlayerReady());
     }
@@ -154,9 +196,20 @@ public class PlaySceneMain extends JPanel {
             }
         });
 
+        // ✅ ESC: ใช้ KeyBinding
         inputMap.put(KeyStroke.getKeyStroke(KeyConfig.getEscape(), 0), "escape");
         actionMap.put("escape", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { /* pause */ }
+            @Override public void actionPerformed(ActionEvent e) {
+                System.out.println("ESC pressed in KeyBinding");
+                handleEscape();
+            }
+        });
+
+        actionMap.put("escape", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) {
+                System.out.println("ESC KeyBinding fired in PlaySceneMain");  // เพิ่มบรรทัดนี้
+                handleEscape();
+            }
         });
     }
 
@@ -321,7 +374,6 @@ public class PlaySceneMain extends JPanel {
         isChoiceMode   = false;
         pendingChoices = null;
 
-        // Speaker
         currentSpeaker = "";
         Object sp = lineData[0];
         if (sp != null) {
@@ -334,7 +386,6 @@ public class PlaySceneMain extends JPanel {
         dialogueBox.setText(currentSpeaker, "");
         fullText = lineData[1].toString().replace("[PLAYER]", GameConstants.PLAYER_NAME);
 
-        // Character
         if (lineData.length >= 3) {
             String fn = (String) lineData[2];
             currentChar = (fn == null || fn.isEmpty() || fn.equals("none")) ? ""
@@ -342,14 +393,12 @@ public class PlaySceneMain extends JPanel {
             characterLayer.updateCharacter(currentChar);
         }
 
-        // Background
         if (lineData.length >= 4) {
             String bg = (String) lineData[3];
             currentBG = (bg == null || bg.isEmpty() || bg.equals("none")) ? ""
                 : (bg.startsWith("model/") ? bg : GameConstants.SCENE_PATH + bg);
         }
 
-        // Effects / Sound / Choices
         boolean hasEffect = false;
         for (int i = 4; i < lineData.length; i++) {
             if (lineData[i] instanceof Object[][]) {
@@ -374,7 +423,6 @@ public class PlaySceneMain extends JPanel {
             }
         }
 
-        // FIX #2: ใน MP mode แสดง dialogueBox เสมอ ไม่ว่าจะมี effect
         if (multiplayerEffectBypass) {
             dialogueBox.setVisible(true);
         } else {
@@ -415,32 +463,18 @@ public class PlaySceneMain extends JPanel {
         updateUIStyles();
         choiceLayer.setVisible(true);
 
-        // ===== TFT Timer =====
         if (multiplayerMode && timerBar != null) {
-            // บอกผู้เล่นอื่นว่าเราถึง choice แล้ว
             if (mpClient != null) mpClient.notifyChoiceReady();
-
-            // ล็อคปุ่มก่อน
             for (Component c : choiceLayer.getComponents()) c.setEnabled(false);
-
-            // ตั้งชื่อรอบ
             String roundName = "ซีน " + sceneName.replace("SCENE_", "").replace("MP", "MP");
             timerBar.setRoundLabel(roundName);
-
-            // callback ปลดล็อค
             timerBar.setOnUnlock(() -> SwingUtilities.invokeLater(() -> {
                 for (Component c : choiceLayer.getComponents()) c.setEnabled(true);
                 repaint();
             }));
-
-            // คำนวณจำนวนผู้เล่นจริง
             int totalP = (mpServer != null) ? mpServer.getPlayerCount() + 1 : mpTotalPlayers;
             if (totalP < 1) totalP = 1;
-
-            // FIX #1: เริ่มนับ timer ทันที
             timerBar.startTimer(mpReadSeconds, totalP);
-
-            // ถ้าเป็น Host นับตัวเองเป็น ready 1 คน
             if (mpServer != null) timerBar.playerReachedChoice();
         }
     }
@@ -466,14 +500,11 @@ public class PlaySceneMain extends JPanel {
         }
     }
 
-    // ================================================================
-    // FIX #3: handleInteraction — แก้ bug storyIndex++ ซ้ำ
-    // ================================================================
     private void handleInteraction() {
-        // FIX #3: ใน MP mode ข้าม isPlaying() check
+        if (PauseMenuUI.getInstance().isMenuVisible()) return;
+
         if (!multiplayerEffectBypass && effectManager != null && effectManager.isPlaying()) return;
 
-        // ถ้า typewriter กำลังพิมพ์ → เร่งให้พิมพ์เสร็จก่อน
         if (typeTimer != null && typeTimer.isRunning()) {
             typeTimer.stop();
             charIndex = fullText.length();
@@ -481,17 +512,14 @@ public class PlaySceneMain extends JPanel {
             return;
         }
 
-        // ถ้าอยู่ใน choice mode และยังไม่แสดงปุ่ม → แสดงปุ่ม
         int btnCount = (choiceLayer.getComponentCount() + 1) / 2;
         if (isChoiceMode && btnCount == 0 && pendingChoices != null) {
             showChoices(pendingChoices);
             return;
         }
 
-        // ถ้าปุ่มแสดงอยู่แล้ว → รอผู้เล่นกด ไม่ทำอะไร
         if (isChoiceMode && btnCount > 0) return;
 
-        // ไปบรรทัดถัดไป (FIX #3: storyIndex++ ที่เดียว ไม่ซ้ำ)
         storyIndex++;
         if (storyIndex < currentSceneData.length) {
             updateScene(currentSceneData[storyIndex]);
@@ -523,7 +551,6 @@ public class PlaySceneMain extends JPanel {
 
     public void loadNewScene(Object[][] nextData, String newName) {
         if (nextData == null) return;
-        // FIX: เคลียร์ effect เก่าทุกครั้งที่โหลดซีนใหม่
         if (effectManager != null) effectManager.stopAll();
         currentSceneData = nextData;
         sceneName        = newName;
@@ -531,17 +558,12 @@ public class PlaySceneMain extends JPanel {
         updateScene(currentSceneData[storyIndex]);
     }
 
-    // ================================================================
-    // Typewriter
-    // ================================================================
-
     private void startTypewriter() {
         charIndex = 0;
         if (typeTimer != null) typeTimer.stop();
 
         Timer wait = new Timer(16, null);
         wait.addActionListener(e -> {
-            // FIX: ใน MP mode ไม่รอ effect เลย — เริ่มพิมพ์ทันที
             if (!multiplayerEffectBypass) {
                 if (effectManager != null &&
                     (effectManager.isPlaying() || effectManager.getAlpha() > 0.3f)) return;
@@ -565,10 +587,6 @@ public class PlaySceneMain extends JPanel {
         });
         typeTimer.start();
     }
-
-    // ================================================================
-    // MiniGame
-    // ================================================================
 
     public void startHeartMiniGame() {
         if (currentMiniGame != null) { remove(currentMiniGame); currentMiniGame = null; }

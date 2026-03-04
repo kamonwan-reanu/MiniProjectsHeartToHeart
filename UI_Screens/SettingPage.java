@@ -2,6 +2,7 @@ package UI_Screens;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.plaf.basic.BasicScrollBarUI;
 import javax.swing.plaf.basic.BasicSliderUI;
 import java.awt.*;
 import java.awt.event.*;
@@ -10,7 +11,6 @@ import core.Main;
 import model.KeyConfig;
 
 public class SettingPage extends JPanel {
-    private long lastUpdateTime = 0;
 
     private JButton[] keyButtons;
     private String[] keyNames;
@@ -19,7 +19,6 @@ public class SettingPage extends JPanel {
     private boolean isListening = false;
     private JButton listeningButton = null;
 
-    // ── Palette (ธีมสว่าง) ──────────────────────────────────
     private static final Color BG       = new Color(248, 235, 248);
     private static final Color CARD     = new Color(255, 248, 254);
     private static final Color BORDER   = new Color(235, 180, 215);
@@ -43,35 +42,29 @@ public class SettingPage extends JPanel {
         add(buildFooter(), BorderLayout.SOUTH);
     }
 
-    // ── Header ──────────────────────────────────────────────
     private JPanel buildHeader() {
         JPanel p = new JPanel(new BorderLayout());
         p.setOpaque(false);
         p.setBorder(new EmptyBorder(0, 0, 24, 0));
-
         JLabel title = new JLabel("ตั้งค่าระบบ", JLabel.LEFT);
         title.setFont(TITLE_F);
         title.setForeground(TEXT_HI);
-
         JPanel divider = new JPanel() {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                GradientPaint gp = new GradientPaint(0, 0, ACCENT, getWidth()*0.6f, 0, new Color(0,0,0,0));
-                g2.setPaint(gp);
+                g2.setPaint(new GradientPaint(0, 0, ACCENT, getWidth()*0.6f, 0, new Color(0,0,0,0)));
                 g2.fillRect(0, 0, getWidth(), 2);
                 g2.dispose();
             }
         };
         divider.setPreferredSize(new Dimension(0, 2));
         divider.setOpaque(false);
-
         p.add(title, BorderLayout.CENTER);
         p.add(divider, BorderLayout.SOUTH);
         return p;
     }
 
-    // ── Center ───────────────────────────────────────────────
     private JScrollPane buildCenter() {
         initializeKeyData();
 
@@ -82,35 +75,30 @@ public class SettingPage extends JPanel {
         g.insets = new Insets(8, 0, 8, 0);
         g.weightx = 1.0;
 
-        // ระดับแสง
+        // ── ระดับแสง ──────────────────────────────────────────
         g.gridy = 0;
         JSlider brightSlider = makeSlider(0, 200, 100, ACCENT);
         JLabel  brightVal    = makeValueLabel("50%");
         brightSlider.addChangeListener(e -> {
             int v = brightSlider.getValue();
             brightVal.setText((v / 2) + "%");
-            long now = System.currentTimeMillis();
-            if (now - lastUpdateTime > 30) { updateBrightness(v); lastUpdateTime = now; }
+            updateBrightness(v);
         });
         grid.add(makeSettingRow("ระดับแสง", brightSlider, brightVal), g);
 
-        // ระดับเสียง
+        // ── ระดับเสียง (✅ แก้ delay) ────────────────────────
         g.gridy = 1;
         JSlider volSlider = makeSlider(0, 100, 50, ACCENT2);
         JLabel  volVal    = makeValueLabel("50%");
         volSlider.addChangeListener(e -> {
-            volVal.setText(volSlider.getValue() + "%");
-            long now = System.currentTimeMillis();
-            if (now - lastUpdateTime > 40) { Main.soundManager.setVolume(volSlider.getValue() / 100f); lastUpdateTime = now; }
-        });
-        volSlider.addMouseListener(new MouseAdapter() {
-            @Override public void mouseReleased(MouseEvent e) {
-                Main.soundManager.setVolume(volSlider.getValue() / 100f);
-            }
+            int v = volSlider.getValue();
+            volVal.setText(v + "%");
+            // ✅ อัปเดตทันทีไม่ throttle
+            Main.soundManager.setVolume(v / 100f);
         });
         grid.add(makeSettingRow("ระดับเสียง", volSlider, volVal), g);
 
-        // ขนาดหน้าจอ
+        // ── ขนาดหน้าจอ ────────────────────────────────────────
         g.gridy = 2;
         JComboBox<String> resBox = makeCombo("1920x1080", "1280x720", "800x600");
         resBox.addActionListener(e -> {
@@ -122,7 +110,7 @@ public class SettingPage extends JPanel {
         });
         grid.add(makeComboRow("ขนาดหน้าจอ", resBox), g);
 
-        // รูปแบบหน้าจอ
+        // ── รูปแบบหน้าจอ ──────────────────────────────────────
         g.gridy = 3;
         JComboBox<String> modeBox = makeCombo("Windowed", "Borderless", "Full Screen");
         modeBox.addActionListener(e -> {
@@ -143,52 +131,84 @@ public class SettingPage extends JPanel {
         });
         grid.add(makeComboRow("รูปแบบหน้าจอ", modeBox), g);
 
-        // ปุ่มควบคุม
+        // ── ปุ่มควบคุม ────────────────────────────────────────
         g.gridy = 4;
         grid.add(makeKeyBindingCard(), g);
 
+        // ✅ Custom scrollbar สวยงาม
         JScrollPane sp = new JScrollPane(grid);
-        sp.setOpaque(false); sp.getViewport().setOpaque(false);
+        sp.setOpaque(false);
+        sp.getViewport().setOpaque(false);
         sp.setBorder(null);
         sp.getVerticalScrollBar().setUnitIncrement(16);
+        sp.getVerticalScrollBar().setUI(new BasicScrollBarUI() {
+            @Override protected void configureScrollBarColors() {
+                thumbColor      = new Color(220, 70, 150, 180);
+                trackColor      = new Color(245, 220, 238);
+            }
+            @Override protected JButton createDecreaseButton(int o) { return zeroBtn(); }
+            @Override protected JButton createIncreaseButton(int o) { return zeroBtn(); }
+            @Override protected void paintThumb(Graphics g, JComponent c, Rectangle r) {
+                if (r.isEmpty()) return;
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                // glow
+                g2.setColor(new Color(220, 70, 150, 40));
+                g2.fill(new RoundRectangle2D.Float(r.x - 2, r.y - 2, r.width + 4, r.height + 4, 12, 12));
+                // thumb gradient
+                g2.setPaint(new GradientPaint(r.x, r.y, new Color(240, 100, 180), r.x, r.y + r.height, new Color(200, 50, 130)));
+                g2.fill(new RoundRectangle2D.Float(r.x + 2, r.y + 2, r.width - 4, r.height - 4, 10, 10));
+                // highlight
+                g2.setColor(new Color(255, 255, 255, 80));
+                g2.fill(new RoundRectangle2D.Float(r.x + 3, r.y + 3, r.width - 6, (r.height - 6) / 2, 8, 8));
+                g2.dispose();
+            }
+            @Override protected void paintTrack(Graphics g, JComponent c, Rectangle r) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(240, 218, 235));
+                g2.fill(new RoundRectangle2D.Float(r.x + 3, r.y, r.width - 6, r.height, 6, 6));
+                g2.setColor(new Color(220, 180, 210, 80));
+                g2.setStroke(new BasicStroke(1f));
+                g2.draw(new RoundRectangle2D.Float(r.x + 3, r.y, r.width - 7, r.height - 1, 6, 6));
+                g2.dispose();
+            }
+            private JButton zeroBtn() {
+                JButton b = new JButton();
+                b.setPreferredSize(new Dimension(0, 0));
+                b.setMinimumSize(new Dimension(0, 0));
+                b.setMaximumSize(new Dimension(0, 0));
+                return b;
+            }
+        });
+        sp.getVerticalScrollBar().setPreferredSize(new Dimension(10, 0));
         return sp;
     }
 
-    // ── Footer ───────────────────────────────────────────────
     private JPanel buildFooter() {
         JPanel p = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
         p.setOpaque(false);
         p.setBorder(new EmptyBorder(20, 0, 0, 0));
-
         JButton back = makePrimaryBtn("ย้อนกลับ", ACCENT);
         back.addActionListener(e -> Main.cardLayout.show(Main.mainContainer, "MENU"));
         p.add(back);
         return p;
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  Row builders
-    // ═══════════════════════════════════════════════════════
-
     private JPanel makeSettingRow(String labelText, JSlider slider, JLabel valLabel) {
         JPanel card = makeCard();
         card.setLayout(new GridBagLayout());
         GridBagConstraints g = new GridBagConstraints();
         g.insets = new Insets(12, 16, 12, 16);
-
         g.gridx = 0; g.gridy = 0; g.weightx = 0;
         JLabel lbl = new JLabel(labelText);
-        lbl.setFont(LABEL_F);
-        lbl.setForeground(TEXT_HI);
+        lbl.setFont(LABEL_F); lbl.setForeground(TEXT_HI);
         lbl.setPreferredSize(new Dimension(160, 24));
         card.add(lbl, g);
-
         g.gridx = 1; g.weightx = 1.0; g.fill = GridBagConstraints.HORIZONTAL;
         card.add(slider, g);
-
         g.gridx = 2; g.weightx = 0; g.fill = GridBagConstraints.NONE;
         card.add(valLabel, g);
-
         return card;
     }
 
@@ -197,17 +217,13 @@ public class SettingPage extends JPanel {
         card.setLayout(new GridBagLayout());
         GridBagConstraints g = new GridBagConstraints();
         g.insets = new Insets(12, 16, 12, 16);
-
         g.gridx = 0; g.gridy = 0; g.weightx = 0;
         JLabel lbl = new JLabel(labelText);
-        lbl.setFont(LABEL_F);
-        lbl.setForeground(TEXT_HI);
+        lbl.setFont(LABEL_F); lbl.setForeground(TEXT_HI);
         lbl.setPreferredSize(new Dimension(160, 24));
         card.add(lbl, g);
-
         g.gridx = 1; g.weightx = 1.0; g.fill = GridBagConstraints.HORIZONTAL;
         card.add(combo, g);
-
         return card;
     }
 
@@ -218,10 +234,8 @@ public class SettingPage extends JPanel {
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
         header.setBorder(new EmptyBorder(14, 16, 10, 16));
-
         JLabel title = new JLabel("ปุ่มควบคุม");
-        title.setFont(LABEL_F);
-        title.setForeground(TEXT_HI);
+        title.setFont(LABEL_F); title.setForeground(TEXT_HI);
         header.add(title, BorderLayout.WEST);
 
         JButton resetBtn = new JButton("คืนค่าเริ่มต้น") {
@@ -230,8 +244,7 @@ public class SettingPage extends JPanel {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(getModel().isRollover() ? new Color(200,40,60) : new Color(180,30,50));
                 g2.fill(new RoundRectangle2D.Float(0,0,getWidth(),getHeight(),8,8));
-                g2.dispose();
-                super.paintComponent(g);
+                g2.dispose(); super.paintComponent(g);
             }
         };
         resetBtn.setFont(new Font("Tahoma", Font.BOLD, 11));
@@ -242,44 +255,34 @@ public class SettingPage extends JPanel {
         resetBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         resetBtn.addActionListener(e -> resetKeyBindings());
         header.add(resetBtn, BorderLayout.EAST);
-
         card.add(header, BorderLayout.NORTH);
 
         JPanel keyGrid = new JPanel(new GridBagLayout());
         keyGrid.setOpaque(false);
         keyGrid.setBorder(new EmptyBorder(0, 16, 14, 16));
-
         GridBagConstraints g = new GridBagConstraints();
         g.insets = new Insets(4, 0, 4, 0);
         g.fill = GridBagConstraints.HORIZONTAL;
-
         for (int i = 0; i < keyNames.length; i++) {
             g.gridx = 0; g.gridy = i; g.weightx = 1.0;
             JLabel desc = new JLabel(keyDescriptions[i]);
             desc.setFont(new Font("Tahoma", Font.PLAIN, 13));
             desc.setForeground(TEXT_LO);
             keyGrid.add(desc, g);
-
             g.gridx = 1; g.weightx = 0;
             JButton btn = createKeyButton(keyNames[i]);
             keyButtons[i] = btn;
             keyGrid.add(btn, g);
         }
-
         card.add(keyGrid, BorderLayout.CENTER);
         return card;
     }
-
-    // ═══════════════════════════════════════════════════════
-    //  Component Factories
-    // ═══════════════════════════════════════════════════════
 
     private JPanel makeCard() {
         JPanel p = new JPanel() {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                // shadow อ่อนๆ
                 g2.setColor(new Color(200, 150, 190, 40));
                 g2.fill(new RoundRectangle2D.Float(3, 4, getWidth()-2, getHeight()-2, 16, 16));
                 g2.setColor(CARD);
@@ -304,11 +307,11 @@ public class SettingPage extends JPanel {
                         Rectangle t = trackRect;
                         int mid = t.y + t.height / 2;
                         g2.setColor(new Color(220, 190, 210));
-                        g2.fill(new RoundRectangle2D.Float(t.x, mid - 3, t.width, 6, 6, 6));
+                        g2.fill(new RoundRectangle2D.Float(t.x, mid-3, t.width, 6, 6, 6));
                         int filled = thumbRect.x - t.x + thumbRect.width / 2;
                         if (filled > 0) {
                             g2.setColor(trackColor);
-                            g2.fill(new RoundRectangle2D.Float(t.x, mid - 3, filled, 6, 6, 6));
+                            g2.fill(new RoundRectangle2D.Float(t.x, mid-3, filled, 6, 6, 6));
                         }
                         g2.dispose();
                     }
@@ -317,12 +320,19 @@ public class SettingPage extends JPanel {
                         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                         int cx = thumbRect.x + thumbRect.width / 2;
                         int cy = thumbRect.y + thumbRect.height / 2;
+                        // shadow
+                        g2.setColor(new Color(0, 0, 0, 25));
+                        g2.fillOval(cx - 10, cy - 8, 20, 20);
+                        // outer circle
                         g2.setColor(trackColor);
-                        g2.fillOval(cx - 9, cy - 9, 18, 18);
-                        g2.setColor(Color.WHITE);
-                        g2.fillOval(cx - 4, cy - 4, 8, 8);
+                        g2.fillOval(cx - 10, cy - 10, 20, 20);
+                        // inner white dot
+                        g2.setColor(new Color(255, 255, 255, 220));
+                        g2.fillOval(cx - 5, cy - 5, 10, 10);
                         g2.dispose();
                     }
+                    // ✅ ไม่วาด focus outline
+                    @Override public void paintFocus(Graphics g) {}
                 });
             }
         };
@@ -333,8 +343,7 @@ public class SettingPage extends JPanel {
 
     private JLabel makeValueLabel(String text) {
         JLabel l = new JLabel(text, JLabel.RIGHT);
-        l.setFont(VALUE_F);
-        l.setForeground(GOLD);
+        l.setFont(VALUE_F); l.setForeground(GOLD);
         l.setPreferredSize(new Dimension(52, 24));
         return l;
     }
@@ -354,11 +363,9 @@ public class SettingPage extends JPanel {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                Color c = getModel().isRollover() ? bg.brighter() : bg;
-                g2.setColor(c);
+                g2.setColor(getModel().isRollover() ? bg.brighter() : bg);
                 g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 14, 14));
-                g2.dispose();
-                super.paintComponent(g);
+                g2.dispose(); super.paintComponent(g);
             }
         };
         b.setFont(new Font("Tahoma", Font.BOLD, 16));
@@ -369,10 +376,6 @@ public class SettingPage extends JPanel {
         b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return b;
     }
-
-    // ═══════════════════════════════════════════════════════
-    //  Keybinding Logic
-    // ═══════════════════════════════════════════════════════
 
     private void initializeKeyData() {
         keyNames = new String[]{"NEXT_MSG","CHOICE_1","CHOICE_2","CHOICE_3","RELATION_UI","ESCAPE"};
@@ -400,18 +403,15 @@ public class SettingPage extends JPanel {
                 g2.setColor(BORDER);
                 g2.setStroke(new BasicStroke(1.5f));
                 g2.draw(new RoundRectangle2D.Float(0, 0, getWidth()-1, getHeight()-1, 10, 10));
-                g2.dispose();
-                super.paintComponent(g);
+                g2.dispose(); super.paintComponent(g);
             }
         };
         btn.putClientProperty("bgColor", new Color(240, 220, 235));
-        btn.setFont(KEY_F);
-        btn.setForeground(TEXT_HI);
+        btn.setFont(KEY_F); btn.setForeground(TEXT_HI);
         btn.setOpaque(false); btn.setContentAreaFilled(false); btn.setBorderPainted(false);
         btn.setFocusPainted(false);
         btn.setPreferredSize(new Dimension(90, 30));
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-
         btn.addMouseListener(new MouseAdapter() {
             @Override public void mouseEntered(MouseEvent e) {
                 if (!isListening) { btn.putClientProperty("bgColor", ACCENT); btn.setForeground(Color.WHITE); btn.repaint(); }
@@ -430,7 +430,6 @@ public class SettingPage extends JPanel {
         btn.setText("[ กดปุ่ม... ]");
         btn.putClientProperty("bgColor", new Color(255, 200, 80)); btn.repaint();
         btn.setForeground(Color.BLACK);
-
         KeyListener tmp = new KeyAdapter() {
             @Override public void keyPressed(KeyEvent e) {
                 int newKey = e.getKeyCode();
@@ -441,8 +440,7 @@ public class SettingPage extends JPanel {
                     new Timer(1000, ev -> {
                         btn.setText(KeyConfig.getKeyText(KeyConfig.getKey(keyName)));
                         btn.putClientProperty("bgColor", new Color(240,220,235)); btn.repaint();
-                        btn.setForeground(TEXT_HI);
-                        stopKeyListening();
+                        btn.setForeground(TEXT_HI); stopKeyListening();
                         ((Timer)ev.getSource()).stop();
                     }).start();
                     return;
@@ -453,8 +451,7 @@ public class SettingPage extends JPanel {
                 btn.setForeground(Color.WHITE);
                 new Timer(500, ev -> {
                     btn.putClientProperty("bgColor", new Color(240,220,235)); btn.repaint();
-                    btn.setForeground(TEXT_HI);
-                    stopKeyListening();
+                    btn.setForeground(TEXT_HI); stopKeyListening();
                     ((Timer)ev.getSource()).stop();
                 }).start();
             }
@@ -469,8 +466,7 @@ public class SettingPage extends JPanel {
         if (isListening && listeningButton != null) {
             KeyListener tmp = (KeyListener) listeningButton.getClientProperty("tempListener");
             if (tmp != null) Main.mainFrame.removeKeyListener(tmp);
-            isListening = false;
-            listeningButton = null;
+            isListening = false; listeningButton = null;
         }
     }
 

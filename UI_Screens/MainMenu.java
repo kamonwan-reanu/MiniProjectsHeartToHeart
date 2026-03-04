@@ -40,6 +40,9 @@ public class MainMenu extends JPanel {
     private Timer particleTimer;
     private JPanel bgPanel;
 
+    // ✅ input blocker panel สำหรับ fadeOut
+    private JPanel inputBlocker;
+
     public MainMenu(Font titleFont, Font menuFont) {
         setLayout(new BorderLayout());
         setBackground(PINK_SOFT);
@@ -70,6 +73,7 @@ public class MainMenu extends JPanel {
         layeredPane.add(mainContentPanel, Integer.valueOf(1));
 
         setupRegisterOverlay();
+        setupInputBlocker();
 
         addComponentListener(new ComponentAdapter() {
             @Override public void componentResized(ComponentEvent e) { sizeAllLayers(); applyResponsiveFont(); }
@@ -78,6 +82,19 @@ public class MainMenu extends JPanel {
         particleTimer = new Timer(32, e -> { tickHearts(); bgPanel.repaint(); });
         particleTimer.start();
         startMenuMusic();
+    }
+
+    // ✅ blocker โปร่งใส block ทุก input ใช้ตอน fadeOut
+    private void setupInputBlocker() {
+        inputBlocker = new JPanel() {
+            @Override public boolean contains(int x, int y) { return true; }
+        };
+        inputBlocker.setOpaque(false);
+        MouseAdapter block = new MouseAdapter() {};
+        inputBlocker.addMouseListener(block);
+        inputBlocker.addMouseMotionListener(block);
+        inputBlocker.setVisible(false);
+        layeredPane.add(inputBlocker, Integer.valueOf(500)); // สูงกว่าทุกอย่าง
     }
 
     private void sizeAllLayers() {
@@ -92,6 +109,7 @@ public class MainMenu extends JPanel {
                 registerOverlay.getComponent(0).setBounds((w-bw)/2,(h-bh)/2,bw,bh);
             }
         }
+        if (inputBlocker != null) inputBlocker.setBounds(0,0,w,h);
         if (!heartsInited) { initHearts(w,h); heartsInited=true; }
     }
 
@@ -150,7 +168,7 @@ public class MainMenu extends JPanel {
 
         buttons[0].addActionListener(e->showRegisterUI());
         buttons[1].addActionListener(e->Main.cardLayout.show(Main.mainContainer,"MULTIPLAYER"));
-        buttons[2].addActionListener(e->openLoadScreen());  // ✅ ใช้ SaveSystemUI
+        buttons[2].addActionListener(e->openLoadScreen());
         buttons[3].addActionListener(e->Main.cardLayout.show(Main.mainContainer,"SETTING"));
         buttons[4].addActionListener(e->Main.cardLayout.show(Main.mainContainer,"CREDIT"));
         buttons[5].addActionListener(e->showExitDialog());
@@ -170,11 +188,10 @@ public class MainMenu extends JPanel {
         content.add(foot,BorderLayout.SOUTH);
     }
 
-    // ✅ เปิดหน้าโหลดผ่าน SaveSystemUI
     private void openLoadScreen() {
         UI_Components.SaveSystemUI saveUI = UI_Components.SaveSystemUI.getInstance();
         saveUI.setOnLoadSuccess(this::stopMenuMusic);
-        saveUI.showLoad(mainContentPanel);
+        saveUI.showLoad(mainContentPanel, "MENU");
     }
 
     private JButton makeMenuBtn(String text, boolean isExit) {
@@ -228,27 +245,39 @@ public class MainMenu extends JPanel {
         return btn;
     }
 
-    // ✅ ไม่มี dimmer ชมพูเลย — แค่ dialog box ลอยอยู่กลาง
     private void setupRegisterOverlay() {
+        // ✅ contains() คืน true ทุกจุด → block คลิกด้านหลังทั้งหมด
         registerOverlay = new JPanel(null) {
             @Override public boolean contains(int x, int y) {
-                if (!isVisible()) return false;
-                if (getComponentCount()>0) return getComponent(0).getBounds().contains(x,y);
-                return false;
+                return isVisible();
             }
         };
         registerOverlay.setOpaque(false);
         registerOverlay.setVisible(false);
 
-        MouseAdapter block=new MouseAdapter(){
-            @Override public void mouseClicked(MouseEvent e){e.consume();}
-            @Override public void mousePressed(MouseEvent e){e.consume();}
-            @Override public void mouseReleased(MouseEvent e){e.consume();}
+        // ✅ block mouse ที่ overlay เอง (พื้นที่นอก box)
+        MouseAdapter dimBlock = new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e)  { e.consume(); }
+            @Override public void mousePressed(MouseEvent e)  { e.consume(); }
+            @Override public void mouseReleased(MouseEvent e) { e.consume(); }
+        };
+        registerOverlay.addMouseListener(dimBlock);
+        registerOverlay.addMouseMotionListener(dimBlock);
+
+        MouseAdapter boxBlock = new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e)  { e.consume(); }
+            @Override public void mousePressed(MouseEvent e)  { e.consume(); }
+            @Override public void mouseReleased(MouseEvent e) { e.consume(); }
         };
 
         JPanel box=new JPanel(null){
             @Override protected void paintComponent(Graphics g){
                 Graphics2D g2=(Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                // dim bg นอก box
+                g2.dispose();
+                // วาด box
+                g2=(Graphics2D)g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(new Color(220,80,140,55));
                 g2.fill(new RoundRectangle2D.Float(6,8,getWidth()-5,getHeight()-5,36,36));
@@ -261,7 +290,8 @@ public class MainMenu extends JPanel {
                 g2.dispose();
             }
         };
-        box.addMouseListener(block); box.addMouseMotionListener(block);
+        box.addMouseListener(boxBlock);
+        box.addMouseMotionListener(boxBlock);
 
         JLabel icon=new JLabel("♡",SwingConstants.CENTER);
         icon.setFont(new Font("Tahoma",Font.BOLD,34)); icon.setForeground(PINK);
@@ -325,7 +355,7 @@ public class MainMenu extends JPanel {
         box.add(warningLabel); box.add(inputField);
         box.add(confirmBtn); box.add(cancelBtn);
 
-        registerOverlay.add(box);  // ✅ เพิ่มแค่ box ไม่มี dimmer
+        registerOverlay.add(box);
         layeredPane.add(registerOverlay, Integer.valueOf(300));
     }
 
@@ -355,7 +385,7 @@ public class MainMenu extends JPanel {
         GameConstants.PLAYER_NAME=name;
         Relation.getInstance().resetAll();
         UI_Components.RelationUI.getInstance().updateAllScores();
-        closeRegisterOverlay();  // ✅ ปิดก่อน fade
+        closeRegisterOverlay();
         for (Component c:core.Main.mainContainer.getComponents())
             if (c instanceof PlaySceneMain) { ((PlaySceneMain)c).loadNewScene(StoryData.SCENE_1,"SCENE_1"); break; }
         startFadeOut();
@@ -363,13 +393,20 @@ public class MainMenu extends JPanel {
 
     private void startFadeOut() {
         stopMenuMusic();
+        // ✅ block input ทันทีระหว่าง fade
+        if (inputBlocker != null) {
+            sizeAllLayers();
+            inputBlocker.setVisible(true);
+        }
         final float[] alpha={0f};
         Timer t=new Timer(20,null);
         t.addActionListener(e->{
             alpha[0]=Math.min(1f,alpha[0]+0.05f);
             Main.brightnessAlpha=alpha[0]; Main.repaintBrightness();
             if (alpha[0]>=1f) {
-                t.stop(); Main.brightnessAlpha=0f; Main.repaintBrightness();
+                t.stop();
+                if (inputBlocker != null) inputBlocker.setVisible(false);
+                Main.brightnessAlpha=0f; Main.repaintBrightness();
                 Main.cardLayout.show(Main.mainContainer,"PLAY_PAGE");
             }
         });

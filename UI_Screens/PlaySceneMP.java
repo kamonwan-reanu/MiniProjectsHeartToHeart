@@ -3,6 +3,7 @@ package UI_Screens;
 import UI_Components.CharacterSprite;
 import UI_Components.DialogueBox;
 import UI_Components.EffectManager;
+import UI_Components.PauseMenuUI;
 import UI_Components.RelationUI;
 import UI_Components.MultiplayerTimerBar;
 import model.GameConstants;
@@ -42,7 +43,8 @@ public class PlaySceneMP extends JPanel {
     private int     charIndex      = 0;
     private boolean isChoiceMode   = false;
     private Object[][] pendingChoices  = null;
-    private boolean sentSceneReady = false;
+    private boolean sentSceneReady    = false;
+    private boolean waitingForResult   = false; // ✅ รอ CHOICE_RESULT จาก server — block onNext()
 
     // ── UI ─────────────────────────────────────────────────
     private JLabel              bgLayer;
@@ -95,7 +97,7 @@ public class PlaySceneMP extends JPanel {
         this.mpClient = client;
 
         Relation.getInstance().resetAll();
-        RelationUI.getInstance().updateAllScores();
+        // ไม่เรียก updateAllScores ใน MP — ทำให้ RelationUI แสดงตัวเอง
         RelationUI.getInstance().setVisible(false);  // ซ่อนใน MP mode
         effectManager.stopAll();
         timerBar.resetAndHide();
@@ -114,15 +116,13 @@ public class PlaySceneMP extends JPanel {
     // ── Host callbacks ────────────────────────────────────
     public void onHostPhaseRead(String scene, int sec, int total) {
         SwingUtilities.invokeLater(() -> {
+            RelationUI.getInstance().setVisible(false); // ซ่อนใน MP ทุกครั้ง
             if (mpClient != null) {
-                // CLIENT: PHASE_READ = signal ให้ไปซีนใหม่
-                // ถ้าซีนเปลี่ยน ให้ loadScene ก่อน แล้ว timer จะ sync กับ server
                 if (!scene.equals(sceneName) || currentScene == null) {
-                    loadScene(scene); // loadScene ฝั่ง client จะไม่เรียก startReadPhase
+                    loadScene(scene);
                 }
                 timerBar.startReadPhase(scene, sec, total);
             } else {
-                // HOST: timerBar จาก onHostPhaseRead callback (server เริ่มเองผ่าน startReadPhase)
                 timerBar.startReadPhase(scene, sec, total);
             }
             relayout();
@@ -217,18 +217,33 @@ public class PlaySceneMP extends JPanel {
             String cn = chosen.length >= 4 ? (String) chosen[2] : null;
             int    cs = chosen.length >= 4 ? (Integer) chosen[3] : 0;
 
-            // flash ปุ่มที่สุ่มได้
             if (countChoiceButtons() > 0) highlightRandomPick(pick);
 
+            // apply affection ของตัวเอง
+            if (cn != null && !cn.isEmpty() && cs != 0) {
+                Relation.getInstance().addAffection(cn, cs);
+                RelationUI.getInstance().setVisible(false);
+            }
+
             if (mpServer != null) {
-                // HOST สุ่มแล้ว — ส่งเป็น choice ของ Host แต่ bypass การรอ (timeout แล้ว)
-                Relation.getInstance().addAffection(cn != null ? cn : "", cs); // apply affection ของ host
+                // HOST: timeout → ส่ง choice สุ่มไป Server แต่ forceTimeout (ไม่รอ clients)
                 new Timer(500, e -> {
                     ((Timer)e.getSource()).stop();
-                    mpServer.forceChoiceTimeout(pickedTarget); // broadcast ทันทีไม่รอ
+                    isChoiceMode = false; pendingChoices = null;
+                    choiceLayer.removeAll(); choiceLayer.setVisible(false);
+                    timerBar.resetAndHide();
+                    mpServer.forceChoiceTimeout(pickedTarget);
                 }).start();
             } else if (mpClient != null) {
-                // CLIENT รอรับ CHOICE_RESULT จาก Server (Host จะ broadcast เอง)
+                // CLIENT: timeout → ส่ง choice สุ่มให้ Server รวบรวม
+                new Timer(500, e -> {
+                    ((Timer)e.getSource()).stop();
+                    isChoiceMode = false; pendingChoices = null;
+                    choiceLayer.removeAll(); choiceLayer.setVisible(false);
+                    lockChoiceButtons();
+                    timerBar.showWaitingForPlayers();
+                    mpClient.sendPlayerChoice(pickedTarget, cn, cs);
+                }).start();
             } else {
                 // Singleplayer
                 new Timer(500, e -> {
@@ -366,6 +381,9 @@ public class PlaySceneMP extends JPanel {
         int w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
 
+        // ซ่อน RelationUI ใน MP mode เสมอ
+        RelationUI.getInstance().setVisible(false);
+
         bgLayer.setBounds(0, 0, w, h);
         characterLayer.setBounds(0, 0, w, h);
         effectLayer.setBounds(0, 0, w, h);
@@ -406,6 +424,54 @@ public class PlaySceneMP extends JPanel {
         return n;
     }
 
+    /** แสดง toast แจ้งเตือนผู้เล่นออกจากห้อง */
+    public void showPlayerLeftToast(String playerName) {
+        SwingUtilities.invokeLater(() -> {
+            // ใช้ JWindow แบบ undecorated ลอยเหนือหน้าจอ
+            Window parent = SwingUtilities.getWindowAncestor(this);
+            JWindow popup = new JWindow(parent);
+
+            JPanel panel = new JPanel(new BorderLayout(8, 0));
+            panel.setBackground(new Color(30, 30, 30, 220));
+            panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 60, 60), 2),
+                BorderFactory.createEmptyBorder(10, 14, 10, 14)
+            ));
+            JLabel icon = new JLabel("✖ ");
+            icon.setFont(new Font("Dialog", Font.BOLD, 14));
+            icon.setForeground(new Color(255, 80, 80));
+            JLabel msg = new JLabel(playerName + " ออกจากห้องแล้ว");
+            msg.setFont(new Font("Tahoma", Font.PLAIN, 14));
+            msg.setForeground(Color.WHITE);
+            panel.add(icon, BorderLayout.WEST);
+            panel.add(msg, BorderLayout.CENTER);
+            popup.add(panel);
+            popup.pack();
+
+            // วางมุมขวาล่างของ parent window
+            if (parent != null) {
+                int px = parent.getX() + parent.getWidth()  - popup.getWidth()  - 14;
+                int py = parent.getY() + parent.getHeight() - popup.getHeight() - 14;
+                popup.setLocation(px, py);
+            }
+            popup.setOpacity(0.92f);
+            popup.setVisible(true);
+
+            new javax.swing.Timer(3000, e -> {
+                ((javax.swing.Timer)e.getSource()).stop();
+                popup.dispose();
+            }).start();
+        });
+    }
+
+    /** เรียกเมื่อ player ออกระหว่าง choice — reset UI ให้ host กดได้ */
+    public void resetWaitingState() {
+        SwingUtilities.invokeLater(() -> {
+            timerBar.resetWaitingForPlayers(); // ซ่อน "รอผู้เล่นคนอื่น..."
+            unlockChoiceButtons();             // unlock ปุ่มถ้า host ยังไม่กด
+        });
+    }
+
     private void lockChoiceButtons() {
         for (Component comp : choiceLayer.getComponents())
             if (comp instanceof UI_Components.ChoiceButton) comp.setEnabled(false);
@@ -426,14 +492,20 @@ public class PlaySceneMP extends JPanel {
         effectManager.stopAll();
 
         currentScene = data; sceneName = name;
-        sceneIndex = 0; sentSceneReady = false;
+        sceneIndex = 0; sentSceneReady = false; waitingForResult = false;
         isChoiceMode = false; pendingChoices = null;
         choiceLayer.removeAll(); choiceLayer.setVisible(false);
 
         int total = (mpServer != null) ? mpServer.getPlayerCount() + 1 : 2;
 
         if (mpServer != null) {
-            mpServer.startReadPhase(name);
+            // ถ้ามี pendingScene = name แสดงว่ามาจาก CHOICE_RESULT → แจ้ง server ว่าโหลดเสร็จ
+            // ถ้าเป็นซีนแรก (MP_INTRO) → startReadPhase โดยตรง
+            if (mpServer.hasPendingScene(name)) {
+                mpServer.hostSceneLoaded(name); // server จะ startReadPhase เมื่อทุกคนโหลดเสร็จ
+            } else {
+                mpServer.startReadPhase(name);  // ซีนแรก หรือ forced navigation
+            }
             // timerBar จะเริ่มผ่าน onHostPhaseRead callback
         } else if (mpClient != null) {
             // ✅ ไม่ start timer ที่นี่ — onHostPhaseRead จาก server จะ set timer
@@ -580,24 +652,24 @@ public class PlaySceneMP extends JPanel {
     //  doChoice
     // ════════════════════════════════════════════════════
     private void doChoice(String target, String charName, int score) {
-        isChoiceMode = false; pendingChoices = null; sentSceneReady = false;
-        choiceLayer.removeAll(); choiceLayer.setVisible(false);
-        timerBar.stopTimer(); // หยุด timer ส่วนตัว แต่ยังไม่ resetAndHide — รอ CHOICE_RESULT
-
-        // ✅ แต่ละคน apply affection ของตัวเองทันทีเลย
+        // apply affection ของตัวเองทันที
         if (charName != null && !charName.isEmpty() && score != 0) {
             Relation.getInstance().addAffection(charName, score);
+            RelationUI.getInstance().setVisible(false); // ซ่อนใน MP
         }
 
+        isChoiceMode = false; pendingChoices = null; sentSceneReady = false;
+        choiceLayer.removeAll(); choiceLayer.setVisible(false);
+        timerBar.stopTimer();
+        lockChoiceButtons();
+
         if (mpServer != null) {
-            // HOST: ส่ง choice ไปรอที่ Server — Server รอให้ทุกคนส่งก่อน broadcast
+            waitingForResult = true; // ✅ รอ CHOICE_RESULT
             mpServer.broadcastChoiceResult(target, charName, score);
-            lockChoiceButtons();
             timerBar.showWaitingForPlayers();
         } else if (mpClient != null) {
-            // CLIENT: ส่ง choice ไปให้ Server รวบรวม แล้วรอ CHOICE_RESULT
+            waitingForResult = true; // ✅ รอ CHOICE_RESULT
             mpClient.sendPlayerChoice(target, charName, score);
-            lockChoiceButtons();
             timerBar.showWaitingForPlayers();
         } else {
             // Singleplayer
@@ -609,8 +681,20 @@ public class PlaySceneMP extends JPanel {
 
     /** ทุกคนรับ choice result นี้พร้อมกัน (Host+Client) */
     private void applyChoiceResult(String target, String charName, int score) {
-        // affection ถูก apply ไปแล้วตอน doChoice — ไม่ต้อง apply ซ้ำ
+        // ถ้าผู้เล่นยังไม่ได้กดเลือก (isChoiceMode ยังเป็น true) → สุ่ม affection ให้
+        if (isChoiceMode && pendingChoices != null && pendingChoices.length > 0) {
+            int pick = random.nextInt(pendingChoices.length);
+            Object[] chosen = pendingChoices[pick];
+            String cn = chosen.length >= 4 ? (String) chosen[2] : null;
+            int    cs = chosen.length >= 4 ? (Integer) chosen[3] : 0;
+            if (cn != null && !cn.isEmpty() && cs != 0) {
+                Relation.getInstance().addAffection(cn, cs);
+                RelationUI.getInstance().setVisible(false);
+            }
+        }
+
         isChoiceMode = false; pendingChoices = null; sentSceneReady = false;
+        waitingForResult = false; // ✅ ได้รับ CHOICE_RESULT แล้ว
         choiceLayer.removeAll(); choiceLayer.setVisible(false);
         timerBar.resetAndHide();
 
@@ -619,10 +703,8 @@ public class PlaySceneMP extends JPanel {
         }
 
         if (mpServer != null) {
-            // HOST: navigate → รอ clients ส่ง SCENE_LOADED ครบก่อน startReadPhase
             loadScene(target);
         } else if (mpClient != null) {
-            // CLIENT: navigate แล้วส่ง SCENE_LOADED แจ้ง Server
             loadScene(target);
             mpClient.notifySceneLoaded(target);
         } else {
@@ -634,6 +716,9 @@ public class PlaySceneMP extends JPanel {
     //  Navigation
     // ════════════════════════════════════════════════════
     private void onNext() {
+        // ✅ FIX: รอ CHOICE_RESULT จาก server — ห้ามคลิกข้าม
+        if (waitingForResult) return;
+
         if (typeTimer != null && typeTimer.isRunning()) {
             typeTimer.stop(); charIndex = fullText.length();
             dialogueBox.setText(currentSpeaker, fullText); return;
@@ -677,11 +762,27 @@ public class PlaySceneMP extends JPanel {
     }
 
     private void setupKeys() {
+        // ✅ WHEN_IN_FOCUSED_WINDOW — ไม่ต้องการ focus จาก JPanel
+        // ❌ ลบ KeyListener และ requestFocusInWindow ออกทั้งหมด
+        setFocusable(false); // ป้องกัน focus cycle ดูด focus จาก window
+
         InputMap  im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         ActionMap am = getActionMap();
+
         im.put(KeyStroke.getKeyStroke(model.KeyConfig.getNextMsg(), 0), "mp_next");
         am.put("mp_next", new AbstractAction() {
             @Override public void actionPerformed(ActionEvent e) { onNext(); }
         });
+
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "mp_escape");
+        am.put("mp_escape", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) { handleEsc(); }
+        });
+    }
+
+    private void handleEsc() {
+        PauseMenuUI pause = PauseMenuUI.getInstance();
+        if (pause.isMenuVisible()) { pause.hideMenu(); return; }
+        pause.showMenu(PlaySceneMP.this, false);
     }
 }
