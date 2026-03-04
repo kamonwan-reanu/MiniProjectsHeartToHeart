@@ -9,6 +9,13 @@
             "name": "Main",
             "request": "launch",
             "mainClass": "core.Main",
+            "projectName": "MiniProjectsHeartToHeart_6e715f6d"
+        },
+        {
+            "type": "java",
+            "name": "Main",
+            "request": "launch",
+            "mainClass": "core.Main",
             "projectName": "MiniProjectsHeartToHeart_7011cea"
         },
         {

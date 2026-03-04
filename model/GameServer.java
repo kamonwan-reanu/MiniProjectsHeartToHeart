@@ -6,13 +6,35 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * GameServer — 2-phase timer + countdown
+ *
+ * Phase 1 READ (50วิ):
+ *   PHASE_READ:scene:sec:total
+ *   TIMER_SYNC:t  ทุก 1 วิ
+ *   READY_COUNT:n:total
+ *   ครบ/หมดเวลา → countdown 3 วิ
+ *
+ * Countdown (3วิ ก่อน choice):
+ *   COUNTDOWN:3 / COUNTDOWN:2 / COUNTDOWN:1
+ *   → PHASE_CHOICE:scene:sec:total
+ *
+ * Phase 2 CHOICE (10วิ):
+ *   PHASE_CHOICE:scene:sec:total
+ *   TIMER_SYNC:t
+ *   หมด → FORCE_NEXT:scene:targetScene (ทุกคนไปพร้อมกัน)
+ */
 public class GameServer {
 
-    public static final int DEFAULT_PORT      = 45621;
-    public static final int MAX_PLAYERS       = 3;
-    public static final int READ_SECONDS      = 50;
-    public static final int CHOICE_SECONDS    = 10;   // ✅ แก้จาก 8 → 10
-    public static final int ALERT_BEFORE_SECS = 3;
+    public static final int MAX_PLAYERS     = 3;
+    public static final int READ_SECONDS    = 50;
+    public static final int COUNTDOWN_SECS  = 3;
+    public static final int CHOICE_SECONDS  = 10;
+
+    // สุ่ม port 40000–49999 เพื่อไม่ชนกับเกมอื่น
+    public static int randomPort() {
+        return 40000 + new Random().nextInt(9999);
+    }
 
     public interface ServerListener {
         void onPlayerJoined(String playerName, int total);
@@ -23,58 +45,84 @@ public class GameServer {
         void onServerStarted(String ip, int port);
 
         default void onPhaseRead(String scene, int sec, int total) {}
+        default void onCountdown(int n) {}                          // 3,2,1
         default void onPhaseChoice(String scene, int sec, int total) {}
-        default void onForceNext(String scene) {}
+        default void onForceNext(String scene, String targetScene) {}
+        /** Host เลือก choice → ทุกคนไปซีนเดียวกัน */
+        default void onChoiceResult(String targetScene, String charName, int score) {}
         default void onTimerSync(int t) {}
         default void onReadyCount(int ready, int total) {}
-        default void onChoiceAlert(String scene) {}
-        default void onCountdown(int n) {}
-        default void onRandomChoice(String scene, int choiceIndex) {}
     }
 
-    private ServerSocket  serverSocket;
-    private final List<ClientHandler> clients      = new CopyOnWriteArrayList<>();
-    private final Map<String,Integer> playerScores = new ConcurrentHashMap<>();
-    private final Set<String>         readySet     = ConcurrentHashMap.newKeySet();
-    private final Set<String>         choiceSet    = ConcurrentHashMap.newKeySet();
-    private int currentChoiceCount = 3;
+    private ServerSocket   serverSocket;
+    private final List<ClientHandler>  clients      = new CopyOnWriteArrayList<>();
+    private final Map<String,Integer>  playerScores = new ConcurrentHashMap<>();
+    private final Set<String>          readySet     = ConcurrentHashMap.newKeySet();
+    private final Set<String>          finishedSet  = ConcurrentHashMap.newKeySet();
+    private final Set<String>          clientReadyForScene = ConcurrentHashMap.newKeySet();
+    private String  pendingScene = "";
+    // ✅ เก็บ choice ของแต่ละคน (รอให้ครบก่อน broadcast)
+    private final Map<String,String[]> playerChoices = new ConcurrentHashMap<>();
+    private String  hostChoiceTarget = null;
 
     private ServerListener listener;
     private boolean running  = false;
     private boolean locked   = false;
     private int     port;
     private int     expectedPlayers = 2;
+    private int     lockedTotal     = 0;  // ✅ FIX 2: จำนวนผู้เล่นที่ lock ไว้ตอนเริ่มเกม
     private String  hostName        = "Host";
     private String  currentScene    = "";
     private boolean inChoicePhase   = false;
 
-    private java.util.Timer  serverTimer = null;
+    private java.util.Timer serverTimer = null;
     private final AtomicInteger timerSec = new AtomicInteger(0);
+
+    // เก็บ targetScene ต่อซีน (set โดย StoryDataMP หรือ PlaySceneMP)
+    private final Map<String, String> sceneNextMap = new ConcurrentHashMap<>();
 
     public GameServer(int port)               { this.port = port; }
     public void setListener(ServerListener l) { this.listener = l; }
     public void setExpectedPlayers(int n)     { this.expectedPlayers = Math.min(n, MAX_PLAYERS); }
-    public void lockRoom()                    { locked = true; }
+    public void lockRoom() {
+        locked = true;
+        lockedTotal = clients.size() + 1;
+        if (expectedPlayers < lockedTotal) expectedPlayers = lockedTotal;
+        finishedSet.clear();
+    }
     public void setHostName(String name)      { this.hostName = name; }
     public int  getPlayerCount()              { return clients.size(); }
     public boolean isRunning()                { return running; }
-    public void setChoiceCount(int n)         { this.currentChoiceCount = Math.max(1, n); }
+
+    /** Host บันทึก nextScene ของแต่ละซีน (เรียกจาก PlaySceneMP ตอนเริ่ม) */
+    public void registerNextScene(String scene, String next) {
+        if (next != null) sceneNextMap.put(scene, next);
+    }
 
     public void receiveHostScore(String name, int score) {
         playerScores.put(name, score);
+        finishedSet.add(name); // ✅ FIX 2
         broadcast("SCORE_UPDATE:" + name + ":" + score);
         if (listener != null) listener.onScoreReceived(name, score);
         checkAllFinished();
     }
 
+    // ════════════════════════════════════════════════
+    //  Phase 1 READ
+    // ════════════════════════════════════════════════
     public void startReadPhase(String sceneName) {
         stopTimer();
-        readySet.clear(); choiceSet.clear();
-        currentScene  = sceneName; inChoicePhase = false;
-        int total = clients.size() + 1, sec = READ_SECONDS;
-        timerSec.set(sec);
-        broadcast("PHASE_READ:" + sceneName + ":" + sec + ":" + total);
-        if (listener != null) listener.onPhaseRead(sceneName, sec, total);
+        readySet.clear();
+        playerChoices.clear();
+        hostChoiceTarget = null;
+        currentScene  = sceneName;
+        inChoicePhase = false;
+        // ✅ FIX 3: ใช้ lockedTotal ถ้ามี เพื่อให้ ready count ไม่เปลี่ยนกะทันหัน
+        int total = lockedTotal > 0 ? lockedTotal : clients.size() + 1;
+        timerSec.set(READ_SECONDS);
+
+        broadcast("PHASE_READ:" + sceneName + ":" + READ_SECONDS + ":" + total);
+        if (listener != null) listener.onPhaseRead(sceneName, READ_SECONDS, total);
 
         serverTimer = new java.util.Timer("ReadTimer", true);
         serverTimer.scheduleAtFixedRate(new TimerTask() {
@@ -82,28 +130,49 @@ public class GameServer {
                 int t = timerSec.decrementAndGet();
                 broadcast("TIMER_SYNC:" + t);
                 if (listener != null) listener.onTimerSync(t);
-                if (t <= 0) { stopTimer(); triggerAlertThenChoice(sceneName); }
+                if (t <= 0) { stopTimer(); startCountdown(sceneName); }
             }
         }, 1000, 1000);
     }
 
-    private void triggerAlertThenChoice(String sceneName) {
-        broadcast("CHOICE_ALERT:" + sceneName);
-        if (listener != null) listener.onChoiceAlert(sceneName);
-        serverTimer = new java.util.Timer("AlertDelay", true);
-        serverTimer.schedule(new TimerTask() {
-            @Override public void run() { stopTimer(); startChoicePhase(sceneName); }
-        }, 1200);
+    // ════════════════════════════════════════════════
+    //  Countdown 3,2,1 ก่อน Phase 2
+    // ════════════════════════════════════════════════
+    private void startCountdown(String sceneName) {
+        stopTimer();
+        final int[] count = {COUNTDOWN_SECS};
+
+        // broadcast countdown เริ่มต้น
+        broadcast("COUNTDOWN:" + count[0]);
+        if (listener != null) listener.onCountdown(count[0]);
+
+        serverTimer = new java.util.Timer("Countdown", true);
+        serverTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override public void run() {
+                count[0]--;
+                if (count[0] > 0) {
+                    broadcast("COUNTDOWN:" + count[0]);
+                    if (listener != null) listener.onCountdown(count[0]);
+                } else {
+                    stopTimer();
+                    startChoicePhase(sceneName);
+                }
+            }
+        }, 1000, 1000);
     }
 
+    // ════════════════════════════════════════════════
+    //  Phase 2 CHOICE
+    // ════════════════════════════════════════════════
     private void startChoicePhase(String sceneName) {
         stopTimer();
-        readySet.clear(); choiceSet.clear();
+        readySet.clear();
         inChoicePhase = true;
-        int total = clients.size() + 1, sec = CHOICE_SECONDS;
-        timerSec.set(sec);
-        broadcast("PHASE_CHOICE:" + sceneName + ":" + sec + ":" + total);
-        if (listener != null) listener.onPhaseChoice(sceneName, sec, total);
+        int total = clients.size() + 1;
+        timerSec.set(CHOICE_SECONDS);
+
+        broadcast("PHASE_CHOICE:" + sceneName + ":" + CHOICE_SECONDS + ":" + total);
+        if (listener != null) listener.onPhaseChoice(sceneName, CHOICE_SECONDS, total);
 
         serverTimer = new java.util.Timer("ChoiceTimer", true);
         serverTimer.scheduleAtFixedRate(new TimerTask() {
@@ -111,76 +180,122 @@ public class GameServer {
                 int t = timerSec.decrementAndGet();
                 broadcast("TIMER_SYNC:" + t);
                 if (listener != null) listener.onTimerSync(t);
-
-                if (t > 0 && t <= ALERT_BEFORE_SECS) {
-                    broadcast("COUNTDOWN:" + t);
-                    if (listener != null) listener.onCountdown(t);
-                }
-
                 if (t <= 0) {
                     stopTimer();
-                    // ✅ Step 1: ส่ง RANDOM_CHOICE ให้ทุกคนที่ยังไม่เลือก
-                    randomChoiceForLatecomers(sceneName);
-                    // ✅ Step 2: หน่วง 1200ms ให้ client ประมวล random + animate ก่อน
-                    //    แล้วค่อยส่ง FORCE_NEXT เป็น safety net
-                    //    client ที่ random แล้วจะ ignore FORCE_NEXT (hasChosen=true)
-                    java.util.Timer delay = new java.util.Timer("ForceDelay", true);
-                    delay.schedule(new TimerTask() {
-                        @Override public void run() {
-                            broadcast("FORCE_NEXT:" + sceneName);
-                            if (listener != null) listener.onForceNext(sceneName);
-                        }
-                    }, 1200);
+                    // หา targetScene — ถ้าไม่มีให้ใช้ "" (PlaySceneMP จะ nextScene เอง)
+                    String target = sceneNextMap.getOrDefault(sceneName, "");
+                    broadcast("FORCE_NEXT:" + sceneName + ":" + target);
+                    if (listener != null) listener.onForceNext(sceneName, target);
                 }
             }
         }, 1000, 1000);
-    }
-
-    // ✅ สุ่ม choice ให้ทุกคนที่ยังไม่เลือก รวมถึง host
-    private void randomChoiceForLatecomers(String sceneName) {
-        Random rng = new Random();
-        for (ClientHandler c : clients) {
-            if (!choiceSet.contains(c.playerName)) {
-                int idx = rng.nextInt(Math.max(1, currentChoiceCount));
-                c.send("RANDOM_CHOICE:" + sceneName + ":" + idx);
-            }
-        }
-        if (!choiceSet.contains(hostName)) {
-            int idx = rng.nextInt(Math.max(1, currentChoiceCount));
-            if (listener != null) listener.onRandomChoice(sceneName, idx);
-        }
-    }
-
-    public void hostMadeChoice(String sceneName) { choiceSet.add(hostName); }
-
-    public void hostSceneReady(String sceneName) {
-        if (!sceneName.equals(currentScene) || inChoicePhase) return;
-        readySet.add(hostName);
-        int total = clients.size() + 1, ready = readySet.size();
-        broadcast("READY_COUNT:" + ready + ":" + total);
-        if (listener != null) listener.onReadyCount(ready, total);
-        if (ready >= total) { stopTimer(); triggerAlertThenChoice(sceneName); }
     }
 
     private void stopTimer() {
         if (serverTimer != null) { serverTimer.cancel(); serverTimer = null; }
     }
 
+    // ════════════════════════════════════════════════
+    //  Host ส่งผล choice ให้ทุกคน
+    //  เรียกแทน loadScene โดยตรง เพื่อให้ทุกคนไปพร้อมกัน
+    // ════════════════════════════════════════════════
+    /**
+     * HOST บันทึก choice ของตัวเอง แล้วรอให้ทุกคน submit ก่อน
+     * เมื่อครบแล้วค่อย broadcast CHOICE_RESULT ให้ทุกคนไปพร้อมกัน
+     */
+    public void broadcastChoiceResult(String targetScene, String charName, int score) {
+        stopTimer();
+        hostChoiceTarget = targetScene;
+        // บันทึก choice ของ host
+        playerChoices.put(hostName, new String[]{targetScene,
+            charName != null ? charName : "", String.valueOf(score)});
+        checkAllChosen();
+    }
+
+    /** Client ส่ง choice มาให้ server รอรวม */
+    public void receiveClientChoice(String playerName, String target, String charName, int score) {
+        playerChoices.put(playerName, new String[]{target, charName, String.valueOf(score)});
+        checkAllChosen();
+    }
+
+    /** เมื่อทุกคน submit choice ครบ → broadcast ไปพร้อมกัน */
+    private void checkAllChosen() {
+        int total = lockedTotal > 0 ? lockedTotal : clients.size() + 1;
+        if (playerChoices.size() < total) return; // ยังไม่ครบ
+
+        String target = hostChoiceTarget != null ? hostChoiceTarget : "";
+        playerChoices.clear();
+        hostChoiceTarget = null;
+        doFinalBroadcastChoice(target);
+    }
+
+    /** บังคับ broadcast ทันที (timeout หรือครบแล้ว) */
+    private void doFinalBroadcastChoice(String targetScene) {
+        clientReadyForScene.clear();
+        pendingScene = targetScene;
+
+        // ส่ง CHOICE_RESULT ให้ clients
+        broadcast("CHOICE_RESULT:" + targetScene + "::"); // ไม่ส่ง affection — แต่ละคนจัดการเอง
+        // แจ้ง Host navigate
+        if (listener != null) listener.onChoiceResult(targetScene, "", 0);
+
+        // Safety net
+        new java.util.Timer("SceneLoadTimeout", true).schedule(new TimerTask() {
+            @Override public void run() {
+                if (pendingScene.equals(targetScene)) {
+                    pendingScene = "";
+                    startReadPhase(targetScene);
+                }
+            }
+        }, 3000);
+    }
+
+    /** Timer phase ChoiceTimeout → ใช้สิ่งที่มีอยู่แล้วหรือสุ่ม */
+    public void forceChoiceTimeout(String targetScene) {
+        stopTimer();
+        if (hostChoiceTarget == null) hostChoiceTarget = targetScene;
+        playerChoices.clear(); // ล้างแล้ว broadcast ทันที
+        doFinalBroadcastChoice(hostChoiceTarget != null ? hostChoiceTarget : targetScene);
+    }
+
+    /** Client บอกว่า navigate ไปซีนใหม่เสร็จแล้ว */
+    public void clientSceneLoaded(String playerName, String scene) {
+        if (!scene.equals(pendingScene)) return;
+        clientReadyForScene.add(playerName);
+        if (clientReadyForScene.size() >= clients.size()) {
+            pendingScene = "";
+            startReadPhase(scene);
+        }
+    }
+
+    // ════════════════════════════════════════════════
+    //  Host พร้อม (in-process)
+    // ════════════════════════════════════════════════
+    public void hostSceneReady(String sceneName) {
+        if (!sceneName.equals(currentScene) || inChoicePhase) return;
+        readySet.add(hostName);
+        int total = lockedTotal > 0 ? lockedTotal : clients.size() + 1;
+        int ready = readySet.size();
+        broadcast("READY_COUNT:" + ready + ":" + total);
+        if (listener != null) listener.onReadyCount(ready, total);
+        if (ready >= total) { stopTimer(); startCountdown(sceneName); }
+    }
+
+    // ════════════════════════════════════════════════
+    //  Server Start/Stop
+    // ════════════════════════════════════════════════
     public void start() {
         new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(port);
                 running = true;
-                // ✅ FIX 5: port จริง
-                int actualPort = serverSocket.getLocalPort();
-                this.port = actualPort;
-                if (listener != null) listener.onServerStarted(getLocalIP(), actualPort);
+                if (listener != null) listener.onServerStarted(getLocalIP(), port);
                 while (running) {
                     try {
                         Socket cs = serverSocket.accept();
                         if (locked || clients.size() >= MAX_PLAYERS - 1) {
                             try (PrintWriter pw = new PrintWriter(
-                                    new OutputStreamWriter(cs.getOutputStream(),"UTF-8"),true)) {
+                                    new OutputStreamWriter(cs.getOutputStream(), "UTF-8"), true)) {
                                 pw.println("ERROR:ห้องเต็มหรือเริ่มไปแล้ว");
                             }
                             cs.close(); continue;
@@ -203,7 +318,9 @@ public class GameServer {
         try { if (serverSocket != null) serverSocket.close(); } catch (IOException ignored) {}
     }
 
-    public void broadcast(String msg) { for (ClientHandler c : clients) c.send(msg); }
+    public void broadcast(String msg) {
+        for (ClientHandler c : clients) c.send(msg);
+    }
 
     private void broadcastPlayerList() {
         StringBuilder sb = new StringBuilder(hostName);
@@ -213,7 +330,7 @@ public class GameServer {
     }
 
     private void checkAllFinished() {
-        if (playerScores.size() >= expectedPlayers) {
+        if (finishedSet.size() >= expectedPlayers) { // ✅ FIX 2: นับจากคนที่ส่งคะแนนจริง
             stopTimer();
             broadcast("LEADERBOARD:" + buildLeaderboard());
             if (listener != null) listener.onAllPlayersFinished(new HashMap<>(playerScores));
@@ -245,9 +362,15 @@ public class GameServer {
         } catch (Exception e) { return "127.0.0.1"; }
     }
 
+    // ════════════════════════════════════════════════
+    //  ClientHandler
+    // ════════════════════════════════════════════════
     private class ClientHandler implements Runnable {
-        Socket socket; PrintWriter out; BufferedReader in;
+        private Socket socket;
+        private PrintWriter out;
+        private BufferedReader in;
         String playerName = "Unknown";
+
         ClientHandler(Socket s) { socket = s; }
 
         @Override public void run() {
@@ -267,32 +390,47 @@ public class GameServer {
                 send("WELCOME:" + playerName);
                 broadcastPlayerList();
                 if (listener != null) listener.onPlayerJoined(playerName, clients.size()+1);
+
             } else if (msg.startsWith("SCORE:")) {
                 try {
                     int score = Integer.parseInt(msg.substring(6).trim());
                     playerScores.put(playerName, score);
+                    finishedSet.add(playerName); // ✅ FIX 2
                     broadcast("SCORE_UPDATE:" + playerName + ":" + score);
                     if (listener != null) listener.onScoreReceived(playerName, score);
                     checkAllFinished();
                 } catch (NumberFormatException ignored) {}
+
             } else if (msg.startsWith("SCENE_READY:")) {
                 String scene = msg.substring(12).trim();
                 if (!scene.equals(currentScene) || inChoicePhase) return;
                 readySet.add(playerName);
-                int total = clients.size()+1, ready = readySet.size();
+                int total = lockedTotal > 0 ? lockedTotal : clients.size() + 1;
+                int ready = readySet.size();
                 broadcast("READY_COUNT:" + ready + ":" + total);
                 if (listener != null) listener.onReadyCount(ready, total);
-                if (ready >= total) { stopTimer(); triggerAlertThenChoice(scene); }
-            } else if (msg.startsWith("CHOICE_MADE:")) {
-                choiceSet.add(playerName);
+                if (ready >= total) { stopTimer(); startCountdown(scene); }
+
+            } else if (msg.startsWith("SCENE_LOADED:")) {
+                String scene = msg.substring(13).trim();
+                clientSceneLoaded(playerName, scene);
+            } else if (msg.startsWith("PLAYER_CHOICE:")) {
+                // PLAYER_CHOICE:target:charName:score
+                String[] p = msg.substring(14).split(":", 3);
+                if (p.length >= 1) {
+                    String t  = p[0];
+                    String cn = p.length >= 2 ? p[1] : "";
+                    int    sc = 0;
+                    try { sc = p.length >= 3 ? Integer.parseInt(p[2]) : 0; } catch (NumberFormatException ignored) {}
+                    receiveClientChoice(playerName, t, cn, sc);
+                }
             } else if (msg.equals("PING")) { send("PONG"); }
         }
 
         void send(String m) { if (out!=null) out.println(m); }
 
         void disconnect() {
-            clients.remove(this); playerScores.remove(playerName);
-            readySet.remove(playerName); choiceSet.remove(playerName);
+            clients.remove(this); playerScores.remove(playerName); readySet.remove(playerName);
             try { if(socket!=null) socket.close(); } catch (IOException ignored) {}
             if (!playerName.equals("Unknown")) {
                 broadcastPlayerList();
