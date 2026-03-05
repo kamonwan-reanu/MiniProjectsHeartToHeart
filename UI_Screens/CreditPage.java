@@ -1,10 +1,10 @@
 package UI_Screens;
 
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
+import core.Main;
 import java.awt.*;
 import java.awt.geom.RoundRectangle2D;
-import core.Main;
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 
 public class CreditPage extends JPanel {
 
