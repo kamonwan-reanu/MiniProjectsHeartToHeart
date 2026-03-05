@@ -34,6 +34,7 @@ public class StoryDataMP {
     public static final String BG_CAFE_RAIN = "cafe_rain.png";
     public static final String BG_PARK = "park.png";
     public static final String BG_SUNSET = "sunset.png";
+    public static final String BG_SAD = "sad.png"; 
     
     // ============================================================
     // ซีนเปิด — บทนำโหมด Multiplayer
@@ -59,7 +60,7 @@ public class StoryDataMP {
         },
     };
     
-    // ฉาก 1B — ต่อจากตัวเลือกแรก
+    // ฉาก 1B
     public static final Object[][] MP_SCENE_1B = {
         { CHARACTER_JES, "ขอบคุณนะคะ... (เธอยิ้มให้เล็กน้อย) ดูเหมือนคุณจะมาที่นี่บ่อยนะคะเนี่ย เลือกมุมที่แสงสวยที่สุดในร้านเลย",
           "Jessica.png", BG_CAFE,
@@ -160,7 +161,7 @@ public class StoryDataMP {
     // ฉาก 2E
     public static final Object[][] MP_SCENE_2E = {
         { CHARACTER_JES, "ฝนหยุดแล้ว... เจสคงต้องไปทำธุระต่อแล้วล่ะค่ะ วันนี้ขอบคุณสำหรับบทสนทนานะคะ รู้สึกเวลาผ่านไปไวผิดปกติจัง... ก่อนจะไป เจสขอถามอะไรเล่นๆ หน่อยสิ ถ้าพรุ่งนี้เจสไม่มาที่นี่ คุณจะตามหาเจส หรือจะรอจนกว่าโชคชะตาจะพาเรามาเจอกันอีกครั้งคะ?",
-          "Jessica.png", BG_CAFE_RAIN,
+          "Jessica.png", BG_CAFE,
           new Object[][] {
               { "A: ผมไม่รอโชคชะตาหรอกครับ ถ้าคุณไม่มา... ผมนี่แหละจะพลิกแผ่นดินหาคุณเอง", "MP_SCENE_3", CHARACTER_JES, 3 },
               { "B: ผมจะมารอที่นี่ทุกวันครับ จนกว่าคุณจะใจอ่อนกลับมาหาผมเอง", "MP_SCENE_3", CHARACTER_JES, 0 },
@@ -198,7 +199,13 @@ public class StoryDataMP {
     // ฉาก 3C — เข้าสู่มินิเกม
     public static final Object[][] MP_SCENE_3C = {
         { CHARACTER_JES, "หยุดเรื่องงานไว้ก่อนดีกว่า! ก่อนที่สมองเจสจะระเบิด... มาเล่นอะไรแก้เครียดกันหน่อยไหมคะ? เจสมีเกมฝึกสมาธิที่ชอบเล่นเวลาคิดงานไม่ออก ถ้าคุณชนะ เจสจะยอมให้คุณขออะไรก็ได้หนึ่งอย่าง... กล้าท้าทายเจสไหมคะ?",
-          "Jessica.png", BG_CAFE, "MINIGAME_MATCH" },
+          "Jessica.png", BG_CAFE,
+          new Object[][] {
+              { "A: ท้ามาเลยครับ! ผมพร้อมจะชนะเพื่อคว้าสิทธิ์ขอรางวัลจากคุณแล้ว", "MINIGAME_MATCH", CHARACTER_JES, 3 },
+              { "B: เล่นเพื่อผ่อนคลายก็ดีครับ แต่อย่าเสียใจนะถ้าผมดันเก่งกว่าคุณขึ้นมา", "MINIGAME_MATCH", CHARACTER_JES, 1 },
+              { "C: ผมยอมเล่นด้วยครับ เห็นแก่ที่คุณอยากพักสายตาพอดี", "MINIGAME_MATCH", CHARACTER_JES, 2 }
+          }
+        },
     };
     
     // ฉาก 3D — หลังจบมินิเกม
@@ -230,7 +237,13 @@ public class StoryDataMP {
     // ฉาก 4B — เข้าสู่มินิเกม RPS
     public static final Object[][] MP_SCENE_4B = {
         { CHARACTER_JES, "ปากหวานจังนะคะ! งั้นมาพิสูจน์กันหน่อยดีกว่า... เรามาเล่น 'เป่ายิ้งฉุบ' กัน ถ้าใจเราตรงกัน หรือคุณชนะเจสได้ จะถือว่าวันนี้โชคชะตาเข้าข้างคุณ และคุณจะได้คะแนนพิเศษจากเจสไปเลย... กล้าเสี่ยงไหมคะ?",
-          "Jessica.png", BG_SUNSET, "MINIGAME_RPS" },
+          "Jessica.png", BG_SUNSET,
+          new Object[][] {
+              { "A: ระดับนี้แล้ว ไม่กลัวอยู่แล้วครับ เตรียมตัวแพ้ความรักของผมได้เลย", "MINIGAME_RPS", CHARACTER_JES, 3 },
+              { "B: ถ้าผมชนะ... รางวัลขอเป็นรอยยิ้มหวานๆ ของคุณสักทีได้ไหม?", "MINIGAME_RPS", CHARACTER_JES, 2 },
+              { "C: มาครับ! ดวงดีแบบนี้ ผมว่าวันนี้โชคเป็นของผมแน่นอน", "MINIGAME_RPS", CHARACTER_JES, 1 }
+          }
+        },
     };
     
     // ฉาก 4C — หลังจบมินิเกม
@@ -238,29 +251,19 @@ public class StoryDataMP {
         { CHARACTER_JES, "วันนี้สนุกจังค่ะ... คุณรู้ไหมว่าตอนนี้คะแนนในใจเจสเริ่มจะ 'ล้น' ออกมาแล้วนะ อีกนิดเดียวเท่านั้น... ถ้าคุณทำให้เจสมั่นใจได้มากกว่านี้ เจสอาจจะยอมหยุดอยู่ที่คุณคนเดียวจริงๆ ก็ได้",
           "Jessica.png", BG_SUNSET,
           new Object[][] {
-              { "A: ผมจะไม่หยุดแค่คะแนนหรอกครับ ผมจะทำให้คุณรักผมทุกลมหายใจเลย", "MP_ENDING_WIN", CHARACTER_JES, 4 },
-              { "B: คะแนนเป็นแค่ตัวเลขครับ แต่ความรู้สึกที่ผมมีให้คุณมันประเมินค่าไม่ได้นะ", "MP_ENDING_WIN", CHARACTER_JES, 3 },
-              { "C: ใกล้จะถึงเส้นชัยแล้วสิ... งั้นพรุ่งนี้เตรียมใจรับเซอร์ไพรส์จากผมได้เลย", "MP_ENDING_WIN", CHARACTER_JES, 1 }
+              { "A: ผมจะไม่หยุดแค่คะแนนหรอกครับ ผมจะทำให้คุณรักผมทุกลมหายใจเลย", "MP_FINAL", CHARACTER_JES, 4 },
+              { "B: คะแนนเป็นแค่ตัวเลขครับ แต่ความรู้สึกที่ผมมีให้คุณมันประเมินค่าไม่ได้นะ", "MP_FINAL", CHARACTER_JES, 3 },
+              { "C: ใกล้จะถึงเส้นชัยแล้วสิ... งั้นพรุ่งนี้เตรียมใจรับเซอร์ไพรส์จากผมได้เลย", "MP_FINAL", CHARACTER_JES, 1 }
           }
         },
     };
 
     // ============================================================
-    // ฉากจบ
+    // ฉาก Final : จบการแข่งขัน
     // ============================================================
-    
-    // ฉากจบแบบผู้ชนะ (คะแนนสูงสุด)
-    public static final Object[][] MP_ENDING_WIN = {
-        { CHARACTER_JES, "ยินดีด้วยนะคะ... คุณคือคนที่ทำให้เจสรู้สึกว่า 'โลกใบนี้ไม่ได้เงียบเหงาอีกต่อไป' ขอบคุณที่อดทนจีบเจสจนถึงวันนี้นะ", "jes_happy.jpg", BG_PARK },
-        { CHARACTER_JES, "(ขยับเข้าไปใกล้จนได้กลิ่นน้ำหอม) ต่อจากนี้... ไม่ต้องทำคะแนนแล้วนะ เพราะเจสให้คุณไปหมดทั้งใจแล้วล่ะค่ะ", "jes_happy.jpg", BG_PARK },
-        { CHARACTER_JES, "เราไปหาอะไรอร่อยๆ ทานกันสองคนดีไหม? เจสอยากฉลองกับ 'แฟน' ของเจสใจจะขาดแล้ว...", "jes_happy.jpg", BG_PARK },
-        { "PLAYER", "ไปครับ... ผมจะดูแลคุณให้ดีกว่าที่เคยทำมาตลอดเลย", "Jessica.png", BG_SUNSET },
-    };
-    
-    // ฉากจบแบบผู้แพ้ (คะแนนต่ำ) - สำหรับผู้ที่ได้คะแนนน้อยที่สุด
-    public static final Object[][] MP_ENDING_LOSE = {
-        { CHARACTER_JES, "เจสขอตัวก่อนนะคะ... มีคนรอให้เจสไปดูแลอยู่", "Jessica.png", BG_SUNSET },
-        { "", "ความรักไม่ใช่เกม... แต่การแพ้เกมครั้งนี้อาจเป็นบทเรียนให้คุณชนะใจใครบางคนในอนาคต", CHARACTER_NONE, BG_SUNSET },
+    public static final Object[][] MP_FINAL = {
+        { CHARACTER_JES, "ขอบคุณนะคะที่มาอยู่กับเจสจนถึงจุดนี้... คะแนนของคุณมันเต็มแล้ว และใจของเจส? มันเต็มไปด้วยความรู้สึกต่อคุณแล้ว",
+          "Jessica.png", BG_CAFE }
     };
 
     // ============================================================
@@ -282,12 +285,13 @@ public class StoryDataMP {
             case "MP_SCENE_3"     -> MP_SCENE_3;
             case "MP_SCENE_3B"    -> MP_SCENE_3B;
             case "MP_SCENE_3C"    -> MP_SCENE_3C;
+            case "MINIGAME_MATCH" -> MP_SCENE_3C;
             case "MP_SCENE_3D"    -> MP_SCENE_3D;
             case "MP_SCENE_4"     -> MP_SCENE_4;
             case "MP_SCENE_4B"    -> MP_SCENE_4B;
+            case "MINIGAME_RPS"   -> MP_SCENE_4B;
             case "MP_SCENE_4C"    -> MP_SCENE_4C;
-            case "MP_ENDING_WIN"  -> MP_ENDING_WIN;
-            case "MP_ENDING_LOSE" -> MP_ENDING_LOSE;
+            case "MP_FINAL"       -> MP_FINAL;
             default -> null;
         };
     }
@@ -299,7 +303,7 @@ public class StoryDataMP {
         "MP_SCENE_2", "MP_SCENE_2B", "MP_SCENE_2C", "MP_SCENE_2D", "MP_SCENE_2E",
         "MP_SCENE_3", "MP_SCENE_3B", "MP_SCENE_3C", "MINIGAME_MATCH", "MP_SCENE_3D",
         "MP_SCENE_4", "MP_SCENE_4B", "MINIGAME_RPS", "MP_SCENE_4C",
-        "MP_ENDING_WIN"
+        "MP_FINAL"
     };
     
     /**
@@ -325,6 +329,6 @@ public class StoryDataMP {
      * ดึงคะแนนจากมินิเกมตามผล
      */
     public static int getMiniGamePoints(boolean won) {
-        return won ? 5 : 2; // ชนะได้ 5, แพ้ได้ 2
+        return won ? 5 : 2;
     }
 }

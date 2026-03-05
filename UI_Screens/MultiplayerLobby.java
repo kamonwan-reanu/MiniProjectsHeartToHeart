@@ -75,7 +75,7 @@ public class MultiplayerLobby extends JPanel {
         content.setBackground(LIGHT_PINK);
         JPanel box = roundBox(460,370); box.setLayout(new BoxLayout(box,BoxLayout.Y_AXIS)); box.setBorder(new EmptyBorder(38,50,38,50));
         JLabel title = lbl("[ เล่นหลายคน ]",F30B,PINK);
-        JLabel sub   = lbl("แข่งกันว่าใครจีบ Ahri ได้คะแนนสูงกว่า!",F16,new Color(150,150,150));
+        JLabel sub   = lbl("แข่งกันว่าใครจีบ Jes ได้คะแนนสูงกว่า!",F16,new Color(150,150,150));
         JButton hostBtn = mkBtn("สร้างห้อง  (Host)",PINK);
         hostBtn.addActionListener(e->showNameOverlay(content));
         JButton joinBtn = mkBtn("เข้าร่วมห้อง  (Join)",BLUE);
@@ -103,7 +103,20 @@ public class MultiplayerLobby extends JPanel {
         nameInput.setText(def); nameInput.selectAll();
         JPanel btnRow=new JPanel(new FlowLayout(FlowLayout.CENTER,14,0)); btnRow.setOpaque(false); btnRow.setAlignmentX(CENTER_ALIGNMENT);
         JButton cancelBtn=mkOutlineSmall("ยกเลิก"); JButton okBtn=mkBtnSmall("เริ่มเลย!",PINK);
-        JPanel overlay=new JPanel(new GridBagLayout()){@Override public boolean isOpaque(){return false;} @Override protected void paintComponent(Graphics g){}};
+        JPanel overlay=new JPanel(new GridBagLayout()){
+            { // ✅ FIX: block mouse/keyboard events ทั้งหมดจากด้านหลัง
+                addMouseListener(new java.awt.event.MouseAdapter(){});
+                addMouseMotionListener(new java.awt.event.MouseMotionAdapter(){});
+                setFocusable(true);
+            }
+            @Override public boolean isOpaque(){return true;}
+            @Override protected void paintComponent(Graphics g){
+                // พื้นหลังโปร่งแสงดำ
+                g.setColor(new Color(0,0,0,120));
+                g.fillRect(0,0,getWidth(),getHeight());
+            }
+        };
+        overlay.setBackground(new Color(0,0,0,0));
         Runnable doOk=()->{
             String input=nameInput.getText().trim();
             if(input.isEmpty()){nameInput.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(Color.RED,2),BorderFactory.createEmptyBorder(8,10,8,10)));return;}
@@ -119,7 +132,13 @@ public class MultiplayerLobby extends JPanel {
         });
         btnRow.add(cancelBtn); btnRow.add(okBtn);
         dialogBox.add(title2); dialogBox.add(gap(4)); dialogBox.add(sub2); dialogBox.add(gap(18)); dialogBox.add(nameInput); dialogBox.add(gap(18)); dialogBox.add(btnRow);
-        overlay.add(dialogBox); mainPanel.add(overlay); mainPanel.setComponentZOrder(overlay,0); mainPanel.revalidate(); mainPanel.repaint();
+        overlay.add(dialogBox);
+        // ✅ FIX: ให้ overlay เต็มขนาด mainPanel และรับ focus ทันที
+        overlay.setBounds(0, 0, mainPanel.getWidth(), mainPanel.getHeight());
+        mainPanel.add(overlay);
+        mainPanel.setComponentZOrder(overlay, 0);
+        mainPanel.revalidate(); mainPanel.repaint();
+        SwingUtilities.invokeLater(overlay::requestFocusInWindow);
         SwingUtilities.invokeLater(nameInput::requestFocusInWindow);
     }
 
@@ -274,10 +293,18 @@ public class MultiplayerLobby extends JPanel {
             }
             @Override public void onScoreReceived(String n,int s){}
             @Override public void onAllPlayersFinished(Map<String,Integer> finalScores){
-                finalScores.put(GameConstants.PLAYER_NAME,Relation.getInstance().getAffection("Ahri"));
                 SwingUtilities.invokeLater(()->{
-                    activeMPScene = null;
-                    showLeaderboard(finalScores); // showLeaderboard จะ switch main card เองแล้ว
+                    if (activeMPScene != null) {
+                        // ✅ ให้ PlaySceneMP โชว์ ending scene ก่อน แล้วค่อย leaderboard
+                        activeMPScene.setOnLeaderboard(scores ->
+                            SwingUtilities.invokeLater(() -> {
+                                activeMPScene = null;
+                                showLeaderboard(scores);
+                            }));
+                        activeMPScene.showEndingScene(finalScores);
+                    } else {
+                        showLeaderboard(finalScores);
+                    }
                 });
             }
             @Override public void onServerError(String msg){
