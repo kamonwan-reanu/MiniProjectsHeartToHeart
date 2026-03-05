@@ -259,6 +259,7 @@ public class StoryDataMP {
     };
 
     // ============================================================
+<<<<<<< HEAD
     // ฉากสุดท้าย (รอการตัดสินจากคะแนน)
     // ============================================================
     public static final Object[][] MP_FINAL = {
@@ -282,6 +283,13 @@ public class StoryDataMP {
     public static final Object[][] MP_ENDING_LOSE = {
         { CHARACTER_JES, "เจสขอตัวก่อนนะคะ... มีคนรอให้เจสไปดูแลอยู่", "Jessica.png", BG_SUNSET },
         { "", "ความรักไม่ใช่เกม... แต่การแพ้เกมครั้งนี้อาจเป็นบทเรียนให้คุณชนะใจใครบางคนในอนาคต", CHARACTER_NONE, BG_SAD },
+=======
+    // ฉาก Final : จบการแข่งขัน
+    // ============================================================
+    public static final Object[][] MP_FINAL = {
+        { CHARACTER_JES, "ขอบคุณนะคะที่มาอยู่กับเจสจนถึงจุดนี้... คะแนนของคุณมันเต็มแล้ว และใจของเจส? มันเต็มไปด้วยความรู้สึกต่อคุณแล้ว",
+          "Jessica.png", BG_CAFE }
+>>>>>>> 4a247c38059be1b9de229587f0f42c4fd168e041
     };
 
     // ============================================================
@@ -303,13 +311,18 @@ public class StoryDataMP {
             case "MP_SCENE_3"     -> MP_SCENE_3;
             case "MP_SCENE_3B"    -> MP_SCENE_3B;
             case "MP_SCENE_3C"    -> MP_SCENE_3C;
+            case "MINIGAME_MATCH" -> MP_SCENE_3C;
             case "MP_SCENE_3D"    -> MP_SCENE_3D;
             case "MP_SCENE_4"     -> MP_SCENE_4;
             case "MP_SCENE_4B"    -> MP_SCENE_4B;
+            case "MINIGAME_RPS"   -> MP_SCENE_4B;
             case "MP_SCENE_4C"    -> MP_SCENE_4C;
             case "MP_FINAL"       -> MP_FINAL;
+<<<<<<< HEAD
             case "MP_ENDING_WIN"  -> MP_ENDING_WIN;
             case "MP_ENDING_LOSE" -> MP_ENDING_LOSE;
+=======
+>>>>>>> 4a247c38059be1b9de229587f0f42c4fd168e041
             default -> null;
         };
     }
