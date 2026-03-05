@@ -63,8 +63,14 @@ public class GameClient {
                 in   = new BufferedReader(new InputStreamReader(socket.getInputStream(),"UTF-8"));
                 connected = true;
                 send("JOIN:" + playerName);
+                // ✅ PING keepalive ทุก 5 วิ ป้องกัน socket หลุดเงียบๆ ผ่าน LAN
+                java.util.Timer ping = new java.util.Timer("Ping", true);
+                ping.scheduleAtFixedRate(new java.util.TimerTask() {
+                    @Override public void run() { if (connected) send("PING"); }
+                }, 5000, 5000);
                 String line;
                 while ((line=in.readLine())!=null) handle(line.trim());
+                ping.cancel();
             } catch (SocketTimeoutException e) {
                 if (listener!=null) listener.onError("หมดเวลาเชื่อมต่อ - ตรวจสอบ IP");
             } catch (ConnectException e) {

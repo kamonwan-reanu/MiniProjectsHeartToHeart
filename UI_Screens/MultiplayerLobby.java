@@ -398,9 +398,11 @@ public class MultiplayerLobby extends JPanel {
     private void startGameAsHost() {
         int totalPlayers = Math.min(playerNames.size(), 3);
         server.setExpectedPlayers(totalPlayers);
-        server.lockRoom(); // ✅ lock หลัง setExpectedPlayers เพื่อให้ lockedTotal ถูกต้อง
-        server.broadcast("START_GAME:" + GameServer.READ_SECONDS);
+        server.lockRoom();
+        // ✅ FIX: loadGame ก่อนเสมอ เพื่อให้ activeMPScene พร้อมรับ callback
+        // แล้วค่อย broadcast START_GAME ให้ clients
         loadGameAndPlay(true, GameServer.READ_SECONDS);
+        server.broadcast("START_GAME:" + GameServer.READ_SECONDS);
     }
 
     // ════════════════════════════════════════════════════
@@ -408,24 +410,27 @@ public class MultiplayerLobby extends JPanel {
     // ════════════════════════════════════════════════════
     private void loadGameAndPlay(boolean asHost, int readSeconds) {
         Relation.getInstance().resetAll();
-        UI_Components.RelationUI.getInstance().setVisible(false); // ซ่อนใน MP เสมอ
+        UI_Components.RelationUI.getInstance().setVisible(false);
         activeMPScene = findOrCreateMPScene();
-        activeMPScene.startMPGame(asHost ? server : null, asHost ? null : client);
         String myName = GameConstants.PLAYER_NAME.isEmpty() ? "Player" : GameConstants.PLAYER_NAME;
 
         if (asHost) {
-            // Host ส่งคะแนนตัวเอง → Server รวบรวม → broadcast LEADERBOARD → onAllPlayersFinished
             activeMPScene.setOnGameFinished(() ->
-                server.receiveHostScore(myName, Relation.getInstance().getAffection("Ahri")));
+                server.receiveHostScore(myName, Relation.getInstance().getAffection("Jessica")));
+            // ✅ FIX: Host รับ leaderboard จาก onAllPlayersFinished (set ใน server listener แล้ว)
         } else {
-            // Client ส่งคะแนน → Server รับ → ครบทุกคน → broadcast LEADERBOARD
-            // Lobby client listener มี onLeaderboard → showLeaderboard() อยู่แล้ว
             activeMPScene.setOnGameFinished(() -> {
-                if (client != null) client.sendScore(Relation.getInstance().getAffection("Ahri"));
+                if (client != null) client.sendScore(Relation.getInstance().getAffection("Jessica"));
             });
+            // ✅ FIX: Client รับ LEADERBOARD จาก server ผ่าน onLeaderboardCb
+            activeMPScene.setOnLeaderboard(scores ->
+                SwingUtilities.invokeLater(() -> showLeaderboard(scores)));
         }
 
+        // ✅ FIX: switch card ก่อนเสมอ เพื่อให้ panel มีขนาดจริงก่อน startMPGame
+        // startMPGame จะเรียก loadScene → startReadPhase → timerBar แสดงผลถูกต้อง
         Main.cardLayout.show(Main.mainContainer, "PLAY_SCENE_MP");
+        activeMPScene.startMPGame(asHost ? server : null, asHost ? null : client);
     }
 
     private PlaySceneMP findOrCreateMPScene() {

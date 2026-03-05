@@ -8,7 +8,7 @@ public class RelationUI extends JPanel {
     
     private static RelationUI instance;
     private int currentScore = 0;
-    private final String TARGET_CHAR = "Ahri";
+    private final String TARGET_CHAR = "Jessica";
     
     private static final int MAX_SCORE = 100;
     private static final int BOX_WIDTH = 220;
