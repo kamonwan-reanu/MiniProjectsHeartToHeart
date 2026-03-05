@@ -12,6 +12,7 @@ import UI_Components.RockPaperScissorsMiniGame;
 import model.GameConstants;
 import model.GameServer;
 import model.GameClient;
+import model.KeyConfig; // ✅ Import ระบบปุ่ม
 import model.SoundManager;
 import model.StoryDataMP;
 import model.Relation;
@@ -64,6 +65,10 @@ public class PlaySceneMP extends JPanel {
     private final Random random = new Random();
     private java.util.function.Consumer<java.util.Map<String,Integer>> onLeaderboardCb = null;
 
+    // ✅ ตัวแปรสำหรับ KeyBindings
+    private InputMap  inputMap;
+    private ActionMap actionMap;
+
     public PlaySceneMP() {
         setLayout(null);
         setOpaque(true);
@@ -82,10 +87,20 @@ public class PlaySceneMP extends JPanel {
                 relayout();
                 if (!isInMiniGame && currentScene != null && sceneIndex < currentScene.length)
                     renderLine(currentScene[sceneIndex]);
+                
+                // ✅ บังคับโฟกัสให้ปุ่มกดทำงานได้
+                SwingUtilities.invokeLater(() -> requestFocusInWindow());
             }
         });
         dialogueBox.setOnNextRequested(this::onNext);
+        
+        setFocusable(true); // ✅ จำเป็นสำหรับรับปุ่ม
         setupKeys();
+        
+        // คลิกเมาส์เพื่อให้โฟกัสกลับมา
+        addMouseListener(new MouseAdapter() {
+            @Override public void mousePressed(MouseEvent e) { requestFocusInWindow(); }
+        });
     }
 
     public void startMPGame(GameServer server, GameClient client) {
@@ -380,6 +395,7 @@ public class PlaySceneMP extends JPanel {
                     ((Timer)e.getSource()).stop();
                     isChoiceMode = false; pendingChoices = null;
                     choiceLayer.removeAll(); choiceLayer.setVisible(false);
+                    clearChoiceKeyBindings(); // ✅ ปิดปุ่ม 123
                     timerBar.resetAndHide();
                     mpServer.forceChoiceTimeout(pickedTarget);
                 }).start();
@@ -388,6 +404,7 @@ public class PlaySceneMP extends JPanel {
                     ((Timer)e.getSource()).stop();
                     isChoiceMode = false; pendingChoices = null;
                     choiceLayer.removeAll(); choiceLayer.setVisible(false);
+                    clearChoiceKeyBindings(); // ✅ ปิดปุ่ม 123
                     lockChoiceButtons();
                     timerBar.showWaitingForPlayers();
                     mpClient.sendPlayerChoice(pickedTarget, cn, cs);
@@ -406,6 +423,7 @@ public class PlaySceneMP extends JPanel {
         sentSceneReady = false;
         choiceLayer.removeAll();
         choiceLayer.setVisible(false);
+        clearChoiceKeyBindings(); // ✅ ปิดปุ่ม 123
         timerBar.resetAndHide();
 
         if (targetScene != null && !targetScene.isEmpty() && storyMap.containsKey(targetScene)) {
@@ -632,6 +650,7 @@ public class PlaySceneMP extends JPanel {
         sceneIndex = 0; sentSceneReady = false; waitingForResult = false;
         isChoiceMode = false; pendingChoices = null;
         choiceLayer.removeAll(); choiceLayer.setVisible(false);
+        clearChoiceKeyBindings(); // ✅ ปิดปุ่ม 123
 
         if (mpServer != null) {
             if (mpServer.hasPendingScene(name)) mpServer.hostSceneLoaded(name);
@@ -662,6 +681,7 @@ public class PlaySceneMP extends JPanel {
         
         choiceLayer.removeAll(); choiceLayer.setVisible(false);
         isChoiceMode = false; pendingChoices = null;
+        clearChoiceKeyBindings(); // ✅ ปิดปุ่ม 123
 
         currentSpeaker = "";
         Object sp = line[0];
@@ -716,6 +736,9 @@ public class PlaySceneMP extends JPanel {
         isChoiceMode = true; 
         choiceLayer.removeAll();
 
+        // ✅ เรียกใช้ KeyBindings ตอนโชว์ช้อยส์
+        setupChoiceKeyBindings(choices);
+
         for (int i = 0; i < choices.length; i++) {
             final String target = (String)  choices[i][1];
             final String cn     = choices[i].length >= 4 ? (String)  choices[i][2] : null;
@@ -724,8 +747,7 @@ public class PlaySceneMP extends JPanel {
             final String num    = String.valueOf(i + 1);
 
             UI_Components.ChoiceButton btn = new UI_Components.ChoiceButton(num, text, () -> {
-                if (timerBar.isChoiceLocked() || isInMiniGame) return;
-                doChoice(target, cn, cs);
+                handleChoiceClick(target, cn, cs);
             });
             btn.setEnabled(alreadyUnlocked);
             choiceLayer.add(btn);
@@ -786,16 +808,17 @@ public class PlaySceneMP extends JPanel {
         nextScene();
     }
 
-    private void doChoice(String target, String charName, int score) {
-        if (isInMiniGame) return;
-        
+    // ✅ แยกการกด Choice ออกมาเพื่อเช็ค Lock เหมือนกับแบบคลิก
+    private void handleChoiceClick(String target, String charName, int score) {
+        if (timerBar.isChoiceLocked() || isInMiniGame) return; // ห้ามกดถ้าถูกล็อคอยู่
+
         if (charName != null && !charName.isEmpty() && score != 0) {
             Relation.getInstance().addAffection(charName, score);
-            RelationUI.getInstance().setVisible(false);
         }
 
         isChoiceMode = false; pendingChoices = null; sentSceneReady = false;
         choiceLayer.removeAll(); choiceLayer.setVisible(false);
+        clearChoiceKeyBindings(); // ✅ ปิดปุ่ม 123
         timerBar.stopTimer();
         lockChoiceButtons();
 
@@ -831,6 +854,7 @@ public class PlaySceneMP extends JPanel {
         isChoiceMode = false; pendingChoices = null; sentSceneReady = false;
         waitingForResult = false; 
         choiceLayer.removeAll(); choiceLayer.setVisible(false);
+        clearChoiceKeyBindings(); // ✅ ปิดปุ่ม 123
         timerBar.resetAndHide();
 
         if (target == null || target.isEmpty() || !storyMap.containsKey(target)) {
@@ -866,7 +890,10 @@ public class PlaySceneMP extends JPanel {
 
     private void nextScene() {
         timerBar.stopTimer();
-        if ("MP_END".equals(sceneName)) { finishGame(); return; }
+        if ("MP_ENDING_WIN".equals(sceneName) || "MP_ENDING_LOSE".equals(sceneName) || "MP_END".equals(sceneName)) { 
+            finishGame(); 
+            return; 
+        }
         
         String[] order = StoryDataMP.SCENE_ORDER;
         for (int i = 0; i < order.length - 1; i++) {
@@ -895,18 +922,53 @@ public class PlaySceneMP extends JPanel {
         typeTimer.start();
     }
 
+    // ================================================================
+    // KeyBindings Logic
+    // ================================================================
+
     private void setupKeys() {
-        setFocusable(false);
-        InputMap  im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
-        ActionMap am = getActionMap();
-        im.put(KeyStroke.getKeyStroke(model.KeyConfig.getNextMsg(), 0), "mp_next");
-        am.put("mp_next", new AbstractAction() {
+        inputMap  = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        actionMap = getActionMap();
+        
+        inputMap.put(KeyStroke.getKeyStroke(KeyConfig.getNextMsg(), 0), "mp_next");
+        actionMap.put("mp_next", new AbstractAction() {
             @Override public void actionPerformed(ActionEvent e) { onNext(); }
         });
-        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "mp_escape");
-        am.put("mp_escape", new AbstractAction() {
+        
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "mp_escape");
+        actionMap.put("mp_escape", new AbstractAction() {
             @Override public void actionPerformed(ActionEvent e) { handleEsc(); }
         });
+    }
+
+    // ✅ สร้าง KeyBinding สำหรับตัวเลือกตอนเล่นหลายคน
+    private void setupChoiceKeyBindings(Object[][] choices) {
+        if (choices == null) return;
+        clearChoiceKeyBindings();
+        
+        int[] keys = { KeyConfig.getChoice1(), KeyConfig.getChoice2(), KeyConfig.getChoice3() };
+        for (int i = 0; i < Math.min(choices.length, 3); i++) {
+            final String target = (String) choices[i][1];
+            final String cn     = choices[i].length >= 4 ? (String) choices[i][2] : null;
+            final int    cs     = choices[i].length >= 4 ? (Integer) choices[i][3] : 0;
+            
+            inputMap.put(KeyStroke.getKeyStroke(keys[i], 0), "ch" + i);
+            actionMap.put("ch" + i, new AbstractAction() {
+                @Override public void actionPerformed(ActionEvent e) {
+                    handleChoiceClick(target, cn, cs);
+                }
+            });
+        }
+    }
+
+    // ✅ ลบ KeyBinding ตอนกดไปแล้ว จะได้ไม่บั๊กไปกดซ้ำ
+    private void clearChoiceKeyBindings() {
+        if (inputMap == null || actionMap == null) return;
+        int[] keys = { KeyConfig.getChoice1(), KeyConfig.getChoice2(), KeyConfig.getChoice3() };
+        for (int i = 0; i < 3; i++) {
+            inputMap.remove(KeyStroke.getKeyStroke(keys[i], 0));
+            actionMap.remove("ch" + i);
+        }
     }
 
     private void handleEsc() {
