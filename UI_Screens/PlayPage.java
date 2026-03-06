@@ -1,0 +1,219 @@
+package UI_Screens;
+
+import javax.swing.*;
+import javax.swing.text.*;
+import java.awt.*;
+import java.awt.event.*;
+import core.Main; 
+import model.StoryData;
+import model.GameConstants;
+import UI_Components.EffectManager;
+
+public class PlayPage extends JPanel {
+    private int storyIndex = 0;
+    private String fullText = "";
+    private int charIndex = 0;
+    private float textAlpha = 1.0f;
+    private boolean isEffectTriggered = false;
+
+    private JTextPane textPane; 
+    private Timer typeTimer;
+    private Timer fadeTimer;
+    private EffectManager effectManager;
+
+    public PlayPage(Font tFont) {
+        setLayout(new GridBagLayout());
+        setBackground(Color.BLACK); 
+        this.effectManager = new EffectManager(this, null);
+
+        textPane = new JTextPane() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2d = (Graphics2D) g.create();
+                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, textAlpha));
+                g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                super.paintComponent(g2d);
+                g2d.dispose();
+            }
+        };
+        
+        textPane.setEditable(false);
+        textPane.setFocusable(false);
+        textPane.setOpaque(false);
+        textPane.setForeground(Color.WHITE);
+        textPane.setHighlighter(null); 
+        textPane.setFont(new Font("Tahoma", Font.PLAIN, 32));
+
+        this.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentShown(ComponentEvent e) {
+                Main.brightnessAlpha = 0.0f;
+                Main.repaintBrightness();
+                updateTextLayout();
+                resetAndStart();
+            }
+        });
+
+        centerText();
+        
+        MouseAdapter clickAdapter = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                handlePageClick(); 
+            }
+        };
+        textPane.addMouseListener(clickAdapter);
+        addMouseListener(clickAdapter);
+        add(textPane);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2d = (Graphics2D) g.create();
+        if (effectManager != null) {
+            effectManager.drawEffects(g2d, getWidth(), getHeight());
+        }
+        g2d.dispose();
+    }
+
+    private void resetAndStart() {
+        storyIndex = 0;
+        textAlpha = 1.0f;
+        textPane.setText("");
+        isEffectTriggered = false;
+        if (effectManager != null) effectManager.stopAll();
+        
+        if (StoryData.SCENE_1 != null && StoryData.SCENE_1.length > 0) {
+            startTypewriter((String) StoryData.SCENE_1[storyIndex][1]);
+        }
+    }
+
+    private void checkAndPlayEffect() {
+        if (isEffectTriggered) return;
+        isEffectTriggered = true; 
+        
+        if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
+            Object[] lineData = StoryData.SCENE_1[storyIndex];
+            if (lineData.length >= 6) {
+                String effectName = (String) lineData[5];
+                if (effectName != null && !effectName.equalsIgnoreCase("none") && !effectName.isEmpty()) {
+                    effectManager.play(effectName);
+                }
+            }
+        }
+    }
+
+    private void startTypewriter(String text) {
+        fullText = text.replace("[PLAYER]", GameConstants.PLAYER_NAME);
+        charIndex = 0;
+        textAlpha = 1.0f; // รีเซ็ตความสว่างตัวหนังสือใหม่
+        textPane.setText(""); 
+        isEffectTriggered = false; 
+        
+        if (typeTimer != null) typeTimer.stop();
+        typeTimer = new Timer(GameConstants.TYPEWRITER_SPEED, e -> {
+            if (charIndex < fullText.length()) {
+                charIndex++;
+                textPane.setText(fullText.substring(0, charIndex)); 
+                centerText(); 
+            } else {
+                typeTimer.stop();
+                checkAndPlayEffect(); 
+            }
+        });
+        typeTimer.start();
+    }
+
+    private void handlePageClick() {
+        // 1. เช็คว่ามีเอฟเฟกต์ไหม
+        boolean hasEffect = false;
+        if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
+            Object[] lineData = StoryData.SCENE_1[storyIndex];
+            if (lineData.length >= 6) {
+                String effectName = (String) lineData[5];
+                hasEffect = (effectName != null && !effectName.equalsIgnoreCase("none") && !effectName.isEmpty());
+            }
+        }
+
+        // 2. 🚫 ล็อค: ถ้า Effect กำลังเล่น ห้ามกดข้ามเด็ดขาด
+        if (effectManager != null && effectManager.isPlaying()) {
+            return; 
+        }
+
+        // 3. ถ้ากำลังพิมพ์ข้อความ
+        if (typeTimer != null && typeTimer.isRunning()) {
+            if (hasEffect) return; // 🚫 ถ้ามีเอฟเฟกต์ ห้ามเร่งข้อความ
+            
+            typeTimer.stop();
+            textPane.setText(fullText); 
+            charIndex = fullText.length();
+            centerText(); 
+            checkAndPlayEffect();
+            return;
+        } 
+
+        // 4. ✅ ไปซีนต่อไป: ต้องพิมพ์จบ และ Effect จบแล้วเท่านั้น
+        if (fadeTimer == null || !fadeTimer.isRunning()) {
+            startFadeOutNext();
+        }
+    }
+
+    private void startFadeOutNext() {
+        if (fadeTimer != null) fadeTimer.stop();
+        
+        // ค่อยๆ จางตัวหนังสือเก่าออกก่อน
+        fadeTimer = new Timer(30, e -> {
+            textAlpha -= 0.15f; 
+            if (textAlpha <= 0.0f) {
+                textAlpha = 0.0f;
+                fadeTimer.stop();
+                
+                // ✨ แก้บั๊กกะพริบ: เปลี่ยน index หลังจากจางหายสนิทแล้วเท่านั้น
+                storyIndex++; 
+                
+                // ล้าง Effect เก่าทิ้งก่อนขึ้นประโยคใหม่
+                if (effectManager != null) effectManager.stopAll();
+                
+                goToNextSentence();
+            }
+            repaint();
+        });
+        fadeTimer.start();
+    }
+
+    private void goToNextSentence() {
+        isEffectTriggered = false; 
+
+        if (StoryData.SCENE_1 != null && storyIndex < StoryData.SCENE_1.length) {
+            startTypewriter((String) StoryData.SCENE_1[storyIndex][1]);
+        } else {
+            // จบ Scene 1 เปลี่ยนหน้า
+            if (Main.cardLayout != null) {
+                for (Component comp : Main.mainContainer.getComponents()) {
+                    if (comp instanceof PlaySceneMain) {
+                        ((PlaySceneMain) comp).loadNewScene(StoryData.SCENE_2, "SCENE_2");
+                        break;
+                    }
+                }
+                Main.cardLayout.show(Main.mainContainer, "PLAY_SCENE"); 
+            }
+        }
+    }
+
+    private void centerText() {
+        StyledDocument doc = textPane.getStyledDocument();
+        SimpleAttributeSet center = new SimpleAttributeSet();
+        StyleConstants.setAlignment(center, StyleConstants.ALIGN_CENTER);
+        doc.setParagraphAttributes(0, doc.getLength(), center, false);
+    }
+
+    private void updateTextLayout() {
+        int w = getWidth(); 
+        int h = getHeight();
+        if (w <= 0 || h <= 0) return;
+        textPane.setPreferredSize(new Dimension((int)(w * 0.8), h / 2));
+        textPane.setFont(new Font("Tahoma", Font.PLAIN, Math.max(24, h / 30)));
+        revalidate();
+    }
+}
