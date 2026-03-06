@@ -293,7 +293,7 @@ public class MainMenu extends JPanel {
         box.addMouseListener(boxBlock);
         box.addMouseMotionListener(boxBlock);
 
-        JLabel icon=new JLabel("♡",SwingConstants.CENTER);
+        JLabel icon=new JLabel("",SwingConstants.CENTER);
         icon.setFont(new Font("Tahoma",Font.BOLD,34)); icon.setForeground(PINK);
         icon.setBounds(0,22,500,42);
 

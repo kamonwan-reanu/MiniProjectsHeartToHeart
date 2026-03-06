@@ -189,7 +189,6 @@ public class PlaySceneMain extends JPanel {
         actionMap = getActionMap();
 
         inputMap.put(KeyStroke.getKeyStroke(KeyConfig.getNextMsg(), 0), "next");
-        inputMap.put(KeyStroke.getKeyStroke(KeyConfig.getNextMsgAlt(), 0), "next"); // ✅ F key
         actionMap.put("next", new AbstractAction() {
             @Override public void actionPerformed(ActionEvent e) { handleInteraction(); }
         });
@@ -623,9 +622,15 @@ public class PlaySceneMain extends JPanel {
             return;
         }
 
-        // SCENE_13 จบ → เปิด inline chat (choice อยู่ใน SCENE_13_CHAT)
+        // ✅ จบ ending scenes → แจ้ง onGameFinished (Main จะโชว์หน้าจบ)
+        if (sceneName.equals("SCENE_TEER") || sceneName.equals("SCENE_TIAN") ||
+            sceneName.equals("SCENE_KIRIN") || sceneName.equals("SCENE_TRUE_END")) {
+            if (onGameFinished != null) onGameFinished.run();
+            return;
+        }
+        
         if (sceneName.equals("SCENE_13") && !multiplayerMode) {
-            showInlineChat(StoryData.SCENE_13_CHAT, model.GameConstants.SCENE_PATH + "dating_chat.png");
+            showInlineChat(StoryData.SCENE_13_CHAT, GameConstants.SCENE_PATH + "dating_chat.png");
             return;
         }
 
@@ -780,21 +785,26 @@ public class PlaySceneMain extends JPanel {
     // ================================================================
 
     public void showInlineChat(Object[][] chatData, String bgPath) {
-        if (inlineChatPanel != null) { remove(inlineChatPanel); inlineChatPanel = null; }
-
+        if (inlineChatPanel != null) remove(inlineChatPanel);
+        
         inlineChatPanel = new ChatScenePanel(chatData, bgPath, () -> {
             Object[][] choiceOnly = new Object[][] {
-                chatData[chatData.length - 1]
+                chatData[chatData.length - 1] 
             };
-            if (inlineChatPanel != null) { remove(inlineChatPanel); inlineChatPanel = null; }
-            revalidate(); repaint();
             loadNewScene(choiceOnly, "SCENE_13_CHAT");
+            
+            remove(inlineChatPanel);
+            inlineChatPanel = null;
+            revalidate();
+            repaint();
         }, false);
-
+        
         int w = getWidth(), h = getHeight();
-        inlineChatPanel.setBounds(0, 0, w, h);
+        int chatH = (int)(h * 0.50);
+        inlineChatPanel.setBounds(0, 0, w, chatH);
+        
         add(inlineChatPanel);
-        refreshZOrder();
+        setComponentZOrder(inlineChatPanel, 0);
         revalidate(); repaint();
         inlineChatPanel.resetAndStart();
     }

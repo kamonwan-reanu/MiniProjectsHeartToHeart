@@ -83,6 +83,22 @@ public class Main {
             PlaySceneMain gameplayScene = new PlaySceneMain(StoryData.SCENE_1, null, "SCENE_1");
             mainContainer.add(gameplayScene, "PLAY_SCENE");
 
+            // ✅ หน้าจบเกม (single player) — ใช้ EndCredits cinematic scroll
+            UI_Screens.EndCredits endingPanel = new UI_Screens.EndCredits(() ->
+                SwingUtilities.invokeLater(() -> {
+                    model.GameState.reset();
+                    for (java.awt.Component comp : mainContainer.getComponents()) {
+                        if (comp instanceof PlaySceneMain) {
+                            ((PlaySceneMain) comp).loadNewScene(StoryData.SCENE_1, "SCENE_1");
+                            break;
+                        }
+                    }
+                    cardLayout.show(mainContainer, "MENU");
+                }));
+            mainContainer.add(endingPanel, "ENDING");
+            gameplayScene.setOnGameFinished(() ->
+                SwingUtilities.invokeLater(() -> cardLayout.show(mainContainer, "ENDING")));
+
             // ✅ หน้าจอ Multiplayer
             mainContainer.add(new MultiplayerLobby(), "MULTIPLAYER");
 
@@ -158,6 +174,10 @@ public class Main {
             e.printStackTrace();
         }
     }
+
+    // ════════════════════════════════════════════════════
+    //  Ending Screen — Cinematic Credits Style
+    // ════════════════════════════════════════════════════
 
     private static void initBrightnessSystem() {
         brightnessOverlay = new JPanel() {

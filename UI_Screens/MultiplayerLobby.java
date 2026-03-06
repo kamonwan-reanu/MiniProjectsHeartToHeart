@@ -223,30 +223,172 @@ public class MultiplayerLobby extends JPanel {
     // ════════════════════════════════════════════════════
     public void showLeaderboard(Map<String,Integer> scores) {
         leaderboardPanel.removeAll();
-        JPanel box=roundBox(520,500); box.setLayout(new BoxLayout(box,BoxLayout.Y_AXIS)); box.setBorder(new EmptyBorder(26,42,26,42));
-        box.add(lbl("ผลการแข่งขัน",F30B,new Color(190,130,0))); box.add(gap(16));
-        List<Map.Entry<String,Integer>> sorted=new ArrayList<>(scores.entrySet());
+
+        // ── พื้นหลังดำ ──
+        leaderboardPanel.setOpaque(true);
+        leaderboardPanel.setBackground(new Color(15, 20, 35));
+
+        // ── กล่องหลัก ธีมดำ+ขอบทอง ──
+        JPanel box = new JPanel() {
+            @Override protected void paintComponent(java.awt.Graphics g) {
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(15, 20, 35, 240));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setColor(new Color(212, 175, 55, 200));
+                g2.setStroke(new BasicStroke(2f));
+                g2.drawRoundRect(2, 2, getWidth()-5, getHeight()-5, 16, 16);
+                g2.dispose();
+            }
+        };
+        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+        box.setOpaque(false);
+        box.setBorder(new EmptyBorder(30, 44, 30, 44));
+        box.setMaximumSize(new Dimension(540, 600));
+
+        // ── หัวข้อ ──
+        JLabel title = lbl("ผลการแข่งขัน", F30B, new Color(212, 175, 55));
+        box.add(title); box.add(gap(4));
+        JLabel sub = lbl("คะแนนความประทับใจของเจส", new Font("Tahoma", Font.PLAIN, 15), new Color(150, 150, 170));
+        box.add(sub); box.add(gap(20));
+
+        // ── เส้นคั่น ──
+        JSeparator sep = new JSeparator(); sep.setForeground(new Color(212,175,55,120)); sep.setMaximumSize(new Dimension(440,2));
+        box.add(sep); box.add(gap(16));
+
+        // ── รายชื่อ ──
+        List<Map.Entry<String,Integer>> sorted = new ArrayList<>(scores.entrySet());
         sorted.sort((a,b)->b.getValue()-a.getValue());
-        String[] ranks={"1.","2.","3."}; Color[] cols={new Color(190,140,0),new Color(120,120,120),new Color(150,90,40)};
-        for(int i=0;i<sorted.size();i++){
-            JPanel row=new JPanel(new BorderLayout(10,0)); row.setMaximumSize(new Dimension(430,55));
-            row.setBackground(i==0?new Color(255,250,215):new Color(255,246,250));
-            row.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255,200,220),1),BorderFactory.createEmptyBorder(9,12,9,12)));
-            String rank=i<ranks.length?ranks[i]:(i+1)+".";
-            JLabel nl=new JLabel(rank+"  "+sorted.get(i).getKey()); nl.setFont(F24B); nl.setForeground(i==0?new Color(150,95,0):Color.DARK_GRAY);
-            JLabel sl=new JLabel(sorted.get(i).getValue()+" คะแนน"); sl.setFont(F24B); sl.setForeground(i<cols.length?cols[i]:cols[cols.length-1]); sl.setHorizontalAlignment(SwingConstants.RIGHT);
-            row.add(nl,BorderLayout.WEST); row.add(sl,BorderLayout.EAST); row.setAlignmentX(CENTER_ALIGNMENT);
-            box.add(row); box.add(gap(7));
+        String[] rankEmoji = {"🥇", "🥈", "🥉"};
+        Color[] nameColors = {new Color(212,175,55), new Color(160,170,190), new Color(180,120,60)};
+        Color[] scoreColors = {new Color(255,215,80), new Color(140,150,170), new Color(200,140,80)};
+
+        String myName = model.GameConstants.PLAYER_NAME;
+        for (int i = 0; i < sorted.size(); i++) {
+            final int idx = i;
+            String playerName = sorted.get(i).getKey();
+            int playerScore   = sorted.get(i).getValue();
+            boolean isMe      = playerName.equals(myName);
+
+            JPanel row = new JPanel(new BorderLayout(12, 0)) {
+                @Override protected void paintComponent(java.awt.Graphics g) {
+                    java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                    g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                    if (isMe) {
+                        g2.setColor(new Color(212, 175, 55, 30));
+                        g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                    }
+                    g2.setColor(isMe ? new Color(212,175,55,180) : new Color(60,65,90,180));
+                    g2.setStroke(new BasicStroke(isMe ? 1.5f : 1f));
+                    g2.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 10, 10);
+                    g2.dispose();
+                }
+            };
+            row.setOpaque(false);
+            row.setMaximumSize(new Dimension(450, 58));
+            row.setBorder(new EmptyBorder(10, 14, 10, 14));
+
+            String rankStr = idx < rankEmoji.length ? rankEmoji[idx] : (idx+1)+".";
+            JLabel rankLbl = new JLabel(rankStr);
+            rankLbl.setFont(new Font("Tahoma", Font.BOLD, 20));
+            rankLbl.setForeground(idx < nameColors.length ? nameColors[idx] : Color.WHITE);
+            rankLbl.setPreferredSize(new Dimension(40, 30));
+
+            JLabel nameLbl = new JLabel(playerName + (isMe ? "  ◀ คุณ" : ""));
+            nameLbl.setFont(new Font("Tahoma", Font.BOLD, 18));
+            nameLbl.setForeground(isMe ? new Color(212,175,55) : new Color(220,220,230));
+
+            JLabel scoreLbl = new JLabel(playerScore + " แต้ม");
+            scoreLbl.setFont(new Font("Tahoma", Font.BOLD, 18));
+            scoreLbl.setForeground(idx < scoreColors.length ? scoreColors[idx] : new Color(180,180,200));
+            scoreLbl.setHorizontalAlignment(SwingConstants.RIGHT);
+
+            JPanel left = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0));
+            left.setOpaque(false);
+            left.add(rankLbl); left.add(nameLbl);
+            row.add(left, BorderLayout.WEST);
+            row.add(scoreLbl, BorderLayout.EAST);
+            row.setAlignmentX(CENTER_ALIGNMENT);
+            box.add(row); box.add(gap(8));
         }
-        box.add(gap(8));
-        JButton menuBtn=mkBtn("กลับหน้าหลัก",PINK); JButton againBtn=mkOutline("เล่นอีกครั้ง");
-        menuBtn.addActionListener(e->{resetAll();Main.cardLayout.show(Main.mainContainer,"MENU");});
-        againBtn.addActionListener(e->{resetAll();goMain();});
+
+        box.add(gap(12));
+        JSeparator sep2 = new JSeparator(); sep2.setForeground(new Color(212,175,55,100)); sep2.setMaximumSize(new Dimension(440,2));
+        box.add(sep2); box.add(gap(18));
+
+        // ── countdown label ──
+        JLabel countdownLbl = lbl("กลับเมนูหลักใน 15 วินาที", new Font("Tahoma", Font.PLAIN, 13), new Color(120,120,150));
+        box.add(countdownLbl); box.add(gap(12));
+
+        // ── ปุ่ม — ธีมทอง+ดำ ──
+        JButton menuBtn = new JButton("กลับหน้าหลัก") {
+            @Override protected void paintComponent(java.awt.Graphics g) {
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(212, 175, 55));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g2.setColor(new Color(15, 20, 35));
+                g2.setFont(getFont());
+                java.awt.FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(getText(), (getWidth()-fm.stringWidth(getText()))/2, (getHeight()+fm.getAscent()-fm.getDescent())/2);
+                g2.dispose();
+            }
+        };
+        menuBtn.setFont(new Font("Tahoma", Font.BOLD, 17));
+        menuBtn.setContentAreaFilled(false); menuBtn.setBorderPainted(false); menuBtn.setFocusPainted(false);
+        menuBtn.setPreferredSize(new Dimension(320, 46)); menuBtn.setMaximumSize(new Dimension(320, 46));
+        menuBtn.setAlignmentX(CENTER_ALIGNMENT);
+        menuBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        menuBtn.addActionListener(e -> { resetAll(); Main.cardLayout.show(Main.mainContainer, "MENU"); });
+
+        JButton againBtn = new JButton("เล่นอีกครั้ง") {
+            @Override protected void paintComponent(java.awt.Graphics g) {
+                java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(15, 20, 35));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g2.setColor(new Color(212, 175, 55, 180));
+                g2.setStroke(new BasicStroke(1.5f));
+                g2.drawRoundRect(1, 1, getWidth()-3, getHeight()-3, 10, 10);
+                g2.setColor(new Color(212, 175, 55));
+                g2.setFont(getFont());
+                java.awt.FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(getText(), (getWidth()-fm.stringWidth(getText()))/2, (getHeight()+fm.getAscent()-fm.getDescent())/2);
+                g2.dispose();
+            }
+        };
+        againBtn.setFont(new Font("Tahoma", Font.BOLD, 17));
+        againBtn.setContentAreaFilled(false); againBtn.setBorderPainted(false); againBtn.setFocusPainted(false);
+        againBtn.setPreferredSize(new Dimension(320, 46)); againBtn.setMaximumSize(new Dimension(320, 46));
+        againBtn.setAlignmentX(CENTER_ALIGNMENT);
+        againBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        againBtn.addActionListener(e -> { resetAll(); goMain(); });
+
         box.add(menuBtn); box.add(gap(10)); box.add(againBtn);
-        leaderboardPanel.add(box); leaderboardPanel.revalidate(); leaderboardPanel.repaint();
-        // ✅ Bug 2: switch main card กลับมาที่ Lobby ก่อน แล้วค่อย show LEADERBOARD
+
+        leaderboardPanel.add(box);
+        leaderboardPanel.revalidate(); leaderboardPanel.repaint();
         Main.cardLayout.show(Main.mainContainer, "MULTIPLAYER");
         show("LEADERBOARD");
+
+        // ── Auto-return หลัง 15 วิ ──
+        final int[] remaining = {15};
+        javax.swing.Timer autoReturn = new javax.swing.Timer(1000, null);
+        autoReturn.addActionListener(ae -> {
+            remaining[0]--;
+            if (remaining[0] > 0) {
+                SwingUtilities.invokeLater(() ->
+                    countdownLbl.setText("กลับเมนูหลักใน " + remaining[0] + " วินาที"));
+            } else {
+                autoReturn.stop();
+                resetAll();
+                Main.cardLayout.show(Main.mainContainer, "MENU");
+            }
+        });
+        autoReturn.start();
+        // หยุด auto-return ถ้ากดปุ่มเอง
+        menuBtn.addActionListener(e -> autoReturn.stop());
+        againBtn.addActionListener(e -> autoReturn.stop());
     }
 
     // ════════════════════════════════════════════════════
